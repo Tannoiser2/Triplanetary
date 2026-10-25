@@ -7,6 +7,7 @@ const GrandTourDevRef = preload("res://scripts/data/grand_tour_dev.gd")
 const PersistenceRef = preload("res://scripts/engine/persistence.gd")
 const OrdnanceRulesRef = preload("res://scripts/engine/ordnance.gd")
 const LogisticsRulesRef = preload("res://scripts/engine/logistics.gd")
+const BaseRulesRef = preload("res://scripts/engine/bases.gd")
 
 var failures := 0
 
@@ -37,6 +38,8 @@ func _init() -> void:
 	_check(HexMathRef.supercover_line(Vector2i.ZERO, Vector2i(3,-1)).front() == Vector2i.ZERO, "supercover include origine")
 	var restored: Dictionary = PersistenceRef.round_trip(state)
 	_check(restored.ships[0].position == state.ships[0].position and restored.turn == state.turn, "round-trip salvataggio deterministico")
+	var portable: Dictionary = PersistenceRef.from_portable_json(PersistenceRef.to_portable_json(state))
+	_check(portable.ships[0].position == state.ships[0].position and portable.gravity[0].acceleration is Vector2i, "salvataggio JSON portabile preserva i vettori")
 	var collision_state: Dictionary = GrandTourDevRef.create_state(); var terra: Dictionary = collision_state.bodies.filter(func(body): return body.id == "terra")[0]
 	collision_state.ships[0].landed_at = ""; collision_state.ships[0].position = terra.hex + Vector2i(2,0); collision_state.ships[0].velocity = Vector2i(-4,0); collision_state.phase = "movement"
 	collision_state = GameRulesRef.advance_phase(collision_state)
@@ -77,7 +80,12 @@ func _init() -> void:
 	logistics_state.knowledge.P1.clear(); logistics_state.ships[1].position = Vector2i(3,0)
 	LogisticsRulesRef.update_detection(logistics_state)
 	_check(LogisticsRulesRef.is_detected(logistics_state, "P1", "p2"), "rilevamento nave entro tre esagoni")
-	if failures == 0: print("OK: 26 test")
+	var base_state: Dictionary = GrandTourDevRef.create_state(); base_state.ships[0].fuel = 1
+	var earth_base: Dictionary = base_state.bases.filter(func(base): return base.body_id == "terra")[0]
+	_check(BaseRulesRef.resupply(base_state, base_state.ships[0], earth_base) and base_state.ships[0].fuel == 20, "rifornimento su base planetaria condivisa")
+	var orbiting: Dictionary = base_state.ships[0].duplicate(true); orbiting.landed_at = ""; orbiting.position += Vector2i(1,0)
+	_check(not BaseRulesRef.can_use(orbiting, earth_base), "base planetaria richiede atterraggio")
+	if failures == 0: print("OK: 29 test")
 	quit(failures)
 
 func _check(value: bool, label: String) -> void:

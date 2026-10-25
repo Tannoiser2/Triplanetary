@@ -5,6 +5,7 @@ const HexMathRef = preload("res://scripts/engine/hex.gd")
 const CombatRulesRef = preload("res://scripts/engine/combat.gd")
 const OrdnanceRulesRef = preload("res://scripts/engine/ordnance.gd")
 const LogisticsRulesRef = preload("res://scripts/engine/logistics.gd")
+const BaseRulesRef = preload("res://scripts/engine/bases.gd")
 
 const PHASES := ["astrogation", "ordnance", "movement", "combat", "resupply"]
 
@@ -78,11 +79,8 @@ static func advance_phase(state: Dictionary) -> Dictionary:
 	if next.phase == "resupply":
 		for i in range(next.ships.size()):
 			if next.ships[i].owner != next.segment: continue
-			for body: Dictionary in next.bodies:
-				if body.base and HexMathRef.distance(next.ships[i].position, body.hex) <= 1 and body.id in ["terra", "venus", "mars", "callisto"]:
-					next.ships[i].fuel = next.ships[i].max_fuel
-					next.ships[i].overload_available = true
-					next.log.append("G%d %s · rifornimento a %s" % [next.turn, next.segment, body.name])
+			for base: Dictionary in next.get("bases", []):
+				if BaseRulesRef.resupply(next, next.ships[i], base): break
 	_check_grand_tour_victory(next)
 	if index < PHASES.size() - 1:
 		next.phase = PHASES[index + 1]

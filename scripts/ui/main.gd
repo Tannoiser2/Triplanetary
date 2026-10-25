@@ -20,7 +20,11 @@ var counter_yes_button: Button
 var counter_no_button: Button
 var advance_button: Button
 var ordnance_buttons: Dictionary = {}
+var torpedo_controls: Array[Control] = []
 var overload_planning := false
+var privacy_overlay: ColorRect
+var privacy_title: Label
+var privacy_detail: Label
 
 func _ready() -> void:
 	state = GrandTourDevRef.create_state()
@@ -34,6 +38,8 @@ func _build_ui() -> void:
 	var reset := Button.new(); reset.text = "Nuova partita"; reset.custom_minimum_size.x = 110; reset.pressed.connect(_reset); header.add_child(reset)
 	var save := Button.new(); save.text = "Salva"; save.custom_minimum_size.x = 70; save.pressed.connect(_save); header.add_child(save)
 	var load_game := Button.new(); load_game.text = "Carica"; load_game.custom_minimum_size.x = 70; load_game.pressed.connect(_load); header.add_child(load_game)
+	var copy_game := Button.new(); copy_game.text = "Esporta"; copy_game.tooltip_text = "Copia un salvataggio portabile negli appunti"; copy_game.pressed.connect(_copy_portable_save); header.add_child(copy_game)
+	var paste_game := Button.new(); paste_game.text = "Importa"; paste_game.tooltip_text = "Carica il salvataggio presente negli appunti"; paste_game.pressed.connect(_paste_portable_save); header.add_child(paste_game)
 	var split := HSplitContainer.new(); split.size_flags_vertical = Control.SIZE_EXPAND_FILL; root.add_child(split)
 	board = BoardRef.new(); board.custom_minimum_size = Vector2(760, 600); board.size_flags_horizontal = Control.SIZE_EXPAND_FILL; board.size_flags_vertical = Control.SIZE_EXPAND_FILL; split.add_child(board)
 	var panel := VBoxContainer.new(); panel.custom_minimum_size.x = 360; split.add_child(panel)
@@ -49,12 +55,26 @@ func _build_ui() -> void:
 	surface_button = Button.new(); surface_button.pressed.connect(_surface_action); panel.add_child(surface_button)
 	for kind in ["mine", "torpedo", "nuke"]:
 		var ordnance_button := Button.new(); ordnance_button.text = "LANCIA " + String(kind).to_upper(); ordnance_button.pressed.connect(_launch_ordnance.bind(kind)); panel.add_child(ordnance_button); ordnance_buttons[kind] = ordnance_button
+	var torpedo_title := Label.new(); torpedo_title.text = "SILURO: DIREZIONE E SPINTA"; panel.add_child(torpedo_title); torpedo_controls.append(torpedo_title)
+	var torpedo_grid := GridContainer.new(); torpedo_grid.columns = 6; panel.add_child(torpedo_grid); torpedo_controls.append(torpedo_grid)
+	for magnitude in [1, 2]:
+		for i in range(6):
+			var torpedo_step := Button.new(); torpedo_step.text = "%d×%d" % [i + 1, magnitude]; torpedo_step.tooltip_text = "Direzione %d, accelerazione %d" % [i + 1, magnitude]; torpedo_step.pressed.connect(_launch_torpedo.bind(i, magnitude)); torpedo_grid.add_child(torpedo_step)
 	attack_button = Button.new(); attack_button.text = "ATTACCA NAVE NEMICA"; attack_button.pressed.connect(_attack); panel.add_child(attack_button)
 	counter_yes_button = Button.new(); counter_yes_button.text = "CONTRATTACCA"; counter_yes_button.pressed.connect(_counter.bind(true)); panel.add_child(counter_yes_button)
 	counter_no_button = Button.new(); counter_no_button.text = "RINUNCIA AL CONTRATTACCO"; counter_no_button.pressed.connect(_counter.bind(false)); panel.add_child(counter_no_button)
 	advance_button = Button.new(); advance_button.text = "AVANZA FASE"; advance_button.pressed.connect(_advance); panel.add_child(advance_button)
 	log_label = Label.new(); log_label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART; log_label.size_flags_vertical = Control.SIZE_EXPAND_FILL; panel.add_child(log_label)
 	var note := Label.new(); note.text = "Mappa di sviluppo: coordinate non definitive.\nNessun asset allegato è incluso."; note.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART; panel.add_child(note)
+	_build_privacy_overlay()
+
+func _build_privacy_overlay() -> void:
+	privacy_overlay = ColorRect.new(); privacy_overlay.color = Color("f2070b16"); privacy_overlay.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT); privacy_overlay.mouse_filter = Control.MOUSE_FILTER_STOP; privacy_overlay.visible = false; add_child(privacy_overlay)
+	var center := CenterContainer.new(); center.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT); privacy_overlay.add_child(center)
+	var card := VBoxContainer.new(); card.custom_minimum_size = Vector2(440, 240); center.add_child(card)
+	privacy_title = Label.new(); privacy_title.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER; privacy_title.add_theme_font_size_override("font_size", 32); card.add_child(privacy_title)
+	privacy_detail = Label.new(); privacy_detail.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER; privacy_detail.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART; privacy_detail.add_theme_font_size_override("font_size", 18); card.add_child(privacy_detail)
+	var reveal := Button.new(); reveal.text = "MOSTRA LA PLANCIA"; reveal.custom_minimum_size.y = 70; reveal.pressed.connect(_dismiss_privacy); card.add_child(reveal)
 
 func _refresh() -> void:
 	board.state = state; board.queue_redraw()
@@ -62,6 +82,7 @@ func _refresh() -> void:
 	status.text = "GIORNO %d\n%s · %s%s%s" % [state.turn, state.segment, String(state.phase).to_upper(), combat_prompt, "\nVINCITORE: " + state.winner if state.winner != "" else ""]
 	for child in ships_box.get_children(): child.queue_free()
 	for ship: Dictionary in state.ships:
+		if ship.owner != state.segment and not state.get("knowledge", {}).get(state.segment, {}).get(ship.id, false): continue
 		var state_text: String = "distrutta" if ship.destroyed else ("a terra: " + ship.landed_at if ship.get("landed_at", "") != "" else "in volo")
 		var planned: Array = state.commands.get(ship.id, {}).get("thrust_steps", [])
 		var button := Button.new(); button.text = "%s · %s · fuel %d · v%s · %s\nSpinte: %d · Visitati: %s" % [ship.name, ship.owner, ship.fuel, ship.velocity, state_text, planned.size(), ", ".join(ship.visited_bodies)]; button.alignment = HORIZONTAL_ALIGNMENT_LEFT; button.pressed.connect(_select.bind(ship.id)); ships_box.add_child(button)
@@ -74,7 +95,9 @@ func _refresh() -> void:
 	surface_button.visible = selected.get("landed_at", "") != "" or _landable_body(selected) != ""
 	surface_button.text = "DECOLLA" if selected.get("landed_at", "") != "" else "ATTERRA"
 	for kind in ordnance_buttons:
-		ordnance_buttons[kind].visible = state.phase == "ordnance" and selected.owner == state.segment and selected.inventory.get(kind, 0) > 0
+		ordnance_buttons[kind].visible = kind != "torpedo" and state.phase == "ordnance" and selected.owner == state.segment and selected.inventory.get(kind, 0) > 0
+	var show_torpedo: bool = state.phase == "ordnance" and selected.owner == state.segment and selected.inventory.get("torpedo", 0) > 0 and not selected.commercial
+	for control in torpedo_controls: control.visible = show_torpedo
 	var combat_pending: bool = not state.pending_combat.is_empty()
 	attack_button.visible = state.phase == "combat" and not combat_pending and selected.owner == state.segment and not selected.destroyed and not selected.commercial and selected.get("landed_at", "") == "" and _enemy_target(selected.owner) != ""
 	counter_yes_button.visible = combat_pending
@@ -126,18 +149,27 @@ func _attack() -> void:
 	if target_id == "": return
 	state = GameRulesRef.declare_attack(state, ship.id, target_id)
 	_refresh()
+	if not state.pending_combat.is_empty():
+		_show_privacy(state.pending_combat.defender, "È richiesta una decisione riservata sul contrattacco.")
 func _counter(enabled: bool) -> void:
 	state = GameRulesRef.respond_to_attack(state, enabled)
 	_refresh()
 func _launch_ordnance(kind: String) -> void:
 	var ship := _selected()
-	var acceleration := Vector2i(1, 0) if kind == "torpedo" else Vector2i.ZERO
-	state = OrdnanceRulesRef.launch(state, ship.id, kind, acceleration)
+	state = OrdnanceRulesRef.launch(state, ship.id, kind)
+	_refresh()
+func _launch_torpedo(direction: int, magnitude: int) -> void:
+	var ship := _selected()
+	state = OrdnanceRulesRef.launch(state, ship.id, "torpedo", HexMathRef.DIRECTIONS[direction] * magnitude)
 	_refresh()
 func _advance() -> void:
+	var old_segment: String = state.segment
 	state = GameRulesRef.advance_phase(state)
 	PersistenceRef.save_game(state)
 	_refresh()
+	if state.segment != old_segment:
+		_select_first_owned_ship()
+		_show_privacy(state.segment, "Inizia il segmento di %s. Passa il dispositivo senza mostrare la plancia." % state.segment)
 func _reset() -> void: state = GrandTourDevRef.create_state(); board.selected_ship = "p1"; overload_planning = false; _refresh()
 func _save() -> void:
 	PersistenceRef.save_game(state)
@@ -152,6 +184,37 @@ func _load() -> void:
 		board.selected_ship = state.ships[0].id
 		state.log.append("Partita caricata")
 	_refresh()
+
+func _copy_portable_save() -> void:
+	DisplayServer.clipboard_set(PersistenceRef.to_portable_json(state))
+	state.log.append("Salvataggio portabile copiato negli appunti")
+	_refresh()
+
+func _paste_portable_save() -> void:
+	var loaded := PersistenceRef.from_portable_json(DisplayServer.clipboard_get())
+	if loaded.is_empty():
+		state.log.append("Importazione non riuscita: dati non validi")
+	else:
+		state = loaded
+		_select_first_owned_ship()
+		state.log.append("Salvataggio portabile importato")
+		PersistenceRef.save_game(state)
+	_refresh()
+
+func _show_privacy(player: String, detail: String) -> void:
+	privacy_title.text = "PASSA A " + player
+	privacy_detail.text = detail
+	privacy_overlay.visible = true
+	privacy_overlay.move_to_front()
+
+func _dismiss_privacy() -> void:
+	privacy_overlay.visible = false
+
+func _select_first_owned_ship() -> void:
+	for ship: Dictionary in state.ships:
+		if ship.owner == state.segment and not ship.destroyed:
+			board.selected_ship = ship.id
+			return
 func _selected() -> Dictionary:
 	for ship: Dictionary in state.ships:
 		if ship.id == board.selected_ship: return ship

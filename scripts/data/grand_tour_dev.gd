@@ -40,6 +40,10 @@ static func create_state() -> Dictionary:
 		for i in range(6):
 			gravity.append({"hex": body_hex + HexMathRef.DIRECTIONS[i], "acceleration": HexMathRef.DIRECTIONS[(i + 3) % 6], "weak": not row[4], "body_id": row[0]})
 	var terra: Vector2i = bodies.filter(func(body): return body.id == "terra")[0].hex
+	var bases := []
+	for body: Dictionary in bodies:
+		if body.base:
+			bases.append({"id":"base-" + body.id,"name":"Base di " + body.name,"kind":"planetary","body_id":body.id,"owner":"shared","active":true,"defense":false})
 	var asteroids: Array = ASTEROID_OFFSETS.map(func(cell): return _offset_to_axial(cell[0], cell[1]))
 	var special_asteroids: Array = SPECIAL_ASTEROID_OFFSETS.map(func(cell): return _offset_to_axial(cell[0], cell[1]))
 	return {
@@ -49,7 +53,7 @@ static func create_state() -> Dictionary:
 		"knowledge": {"P1":{"p2":true},"P2":{"p1":true}},
 		"log": [], "events": [], "winner": "",
 		"map_columns": 56, "map_rows": 35,
-		"bodies": bodies, "gravity": gravity,
+		"bodies": bodies, "bases": bases, "gravity": gravity,
 		"ships": [_ship("p1", "P1", terra, 0), _ship("p2", "P2", terra, 1)]
 	}
 

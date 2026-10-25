@@ -23,17 +23,21 @@ Aggiornato al 26 ottobre 2026.
 - Campi di asteroidi, rischio deterministico, asteroidi speciali e rimozione tramite testata nucleare.
 - Regole motore per carico, capienza, trasferimento di materiali e carburante fra navi sulla stessa rotta.
 - Rilevamento persistente da navi e basi, occultamento dopo l'atterraggio in una base amica e blocco del fuoco contro bersagli non rilevati.
+- Schermata di passaggio hot-seat al cambio giocatore e prima della scelta riservata del contrattacco.
+- Salvataggio portabile JSON tramite appunti, con import e preservazione dei vettori esagonali.
+- Basi planetarie come entità dati e rifornimento solo dopo un atterraggio valido; fondazione del motore per basi orbitali/asteroidali e difese.
+- Selezione esplicita di direzione e accelerazione 1/2 per il lancio dei siluri.
 - Scheda e copertina originale per l'inclusione automatica nella Ludoteca Virtuale.
-- 26 test headless.
+- 29 test headless.
 
 ## Ancora incompleto
 
 - Revisione manuale finale della trascrizione di ogni esagono della mappa, degli asteroidi, delle basi e dei detector.
 - Collisione sub-esagono con il disco grafico anziché con l'intero esagono centrale.
 - Attacchi combinati con più navi, ramming e selezione multipla dei bersagli.
-- Interfaccia completa per scegliere vettore dei siluri, carico e trasferimenti (le regole di motore sono presenti).
+- Interfaccia completa per carico e trasferimenti (le regole di motore sono presenti).
 - Basi orbitali/asteroidali, difese, resa e cattura.
-- Dummy e schermata privacy hot-seat (il rilevamento di motore e l'occultamento sulla plancia sono presenti).
+- Dummy e identità segrete (rilevamento, occultamento e schermata privacy hot-seat sono presenti).
 - Replay navigabile ed export/import portabile del salvataggio.
 - Gli altri sette scenari.
 
