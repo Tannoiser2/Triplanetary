@@ -22,3 +22,7 @@ static func gun_damage(attacker: int, defender: int, die: int, range_hexes: int,
 	if column < 0: return "-"
 	var modified := clampi(die - range_hexes - maxi(0, relative_velocity - 2) + (1 if heroic else 0), 1, 6)
 	return TABLE[column][modified - 1]
+
+static func disabled_turns(result: String) -> int:
+	if not result.begins_with("D"): return 0
+	return result.substr(1).to_int()

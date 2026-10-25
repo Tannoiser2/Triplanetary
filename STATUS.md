@@ -17,13 +17,15 @@ Aggiornato al 26 ottobre 2026.
 - Visite Grand Tour, rifornimento alle quattro basi previste e condizione di vittoria.
 - Salvataggio/caricamento locale e autosave a ogni avanzamento di fase.
 - Tabella base del fuoco e RNG/risoluzione deterministica del motore.
-- 14 test headless.
+- Attacco nave contro nave, scelta del contrattacco con passaggio di mano, distanza minima, velocità relativa, eroismo e applicazione simultanea dei risultati.
+- Disabilitazioni cumulative e distruzione a sei turni residui.
+- 18 test headless.
 
 ## Ancora incompleto
 
 - Trascrizione certificata di ogni esagono della mappa, asteroidi, basi e detector.
 - Collisione sub-esagono con il disco grafico anziché con l'intero esagono centrale.
-- UI di combattimento, contrattacchi, danni, ramming ed eroismo.
+- Attacchi combinati con più navi, ramming e selezione multipla dei bersagli.
 - Mine, siluri e testate nucleari.
 - Basi orbitali/asteroidali, difese, cargo, trasferimenti, resa e cattura.
 - Fog of war, rilevamento, dummy e schermata privacy.

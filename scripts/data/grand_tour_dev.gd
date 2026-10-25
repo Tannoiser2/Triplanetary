@@ -31,7 +31,8 @@ static func create_state() -> Dictionary:
 	var terra: Vector2i = bodies.filter(func(body): return body.id == "terra")[0].hex
 	return {
 		"scenario": "grand-tour-2037", "ruleset": "updated-second-edition", "seed": 2037,
-		"turn": 1, "segment": "P1", "phase": "astrogation", "commands": {}, "log": [], "events": [], "winner": "",
+		"rng_state": 2037, "turn": 1, "segment": "P1", "phase": "astrogation", "commands": {},
+		"pending_combat": {}, "log": [], "events": [], "winner": "",
 		"map_columns": 56, "map_rows": 35,
 		"bodies": bodies, "gravity": gravity,
 		"ships": [_ship("p1", "P1", terra, 0), _ship("p2", "P2", terra, 1)]
@@ -42,7 +43,8 @@ static func _ship(id: String, owner: String, position: Vector2i, base_side: int)
 		"velocity": Vector2i.ZERO, "fuel": 20, "fuel_spent": 0, "max_fuel": 20,
 		"combat": 2, "commercial": false, "pending_gravity": [], "disabled_until_turn": 0,
 		"destroyed": false, "overload_available": true, "visited_bodies": ["terra"],
-		"landed_at": "terra", "base_side": base_side, "must_burn_after_takeoff": false}
+		"landed_at": "terra", "base_side": base_side, "must_burn_after_takeoff": false,
+		"heroic": false, "last_attack_key": "", "last_target_key": "", "previous_position": position}
 
 static func _offset_to_axial(column: int, row: int) -> Vector2i:
 	return Vector2i(column, row - (column - (column & 1)) / 2)

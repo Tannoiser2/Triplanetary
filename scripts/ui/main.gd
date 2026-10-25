@@ -14,6 +14,10 @@ var log_label: Label
 var overload_button: Button
 var weak_button: Button
 var surface_button: Button
+var attack_button: Button
+var counter_yes_button: Button
+var counter_no_button: Button
+var advance_button: Button
 var overload_planning := false
 
 func _ready() -> void:
@@ -41,13 +45,17 @@ func _build_ui() -> void:
 	weak_button = Button.new(); weak_button.pressed.connect(_toggle_weak_gravity); panel.add_child(weak_button)
 	var coast := Button.new(); coast.text = "Nessuna spinta"; coast.pressed.connect(_coast); panel.add_child(coast)
 	surface_button = Button.new(); surface_button.pressed.connect(_surface_action); panel.add_child(surface_button)
-	var advance := Button.new(); advance.text = "AVANZA FASE"; advance.pressed.connect(_advance); panel.add_child(advance)
+	attack_button = Button.new(); attack_button.text = "ATTACCA NAVE NEMICA"; attack_button.pressed.connect(_attack); panel.add_child(attack_button)
+	counter_yes_button = Button.new(); counter_yes_button.text = "CONTRATTACCA"; counter_yes_button.pressed.connect(_counter.bind(true)); panel.add_child(counter_yes_button)
+	counter_no_button = Button.new(); counter_no_button.text = "RINUNCIA AL CONTRATTACCO"; counter_no_button.pressed.connect(_counter.bind(false)); panel.add_child(counter_no_button)
+	advance_button = Button.new(); advance_button.text = "AVANZA FASE"; advance_button.pressed.connect(_advance); panel.add_child(advance_button)
 	log_label = Label.new(); log_label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART; log_label.size_flags_vertical = Control.SIZE_EXPAND_FILL; panel.add_child(log_label)
 	var note := Label.new(); note.text = "Mappa di sviluppo: coordinate non definitive.\nNessun asset allegato è incluso."; note.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART; panel.add_child(note)
 
 func _refresh() -> void:
 	board.state = state; board.queue_redraw()
-	status.text = "GIORNO %d\n%s · %s%s" % [state.turn, state.segment, String(state.phase).to_upper(), "\nVINCITORE: " + state.winner if state.winner != "" else ""]
+	var combat_prompt := "\nPASSARE A %s: scegliere il contrattacco" % state.pending_combat.defender if not state.pending_combat.is_empty() else ""
+	status.text = "GIORNO %d\n%s · %s%s%s" % [state.turn, state.segment, String(state.phase).to_upper(), combat_prompt, "\nVINCITORE: " + state.winner if state.winner != "" else ""]
 	for child in ships_box.get_children(): child.queue_free()
 	for ship: Dictionary in state.ships:
 		var state_text: String = "distrutta" if ship.destroyed else ("a terra: " + ship.landed_at if ship.get("landed_at", "") != "" else "in volo")
@@ -61,6 +69,11 @@ func _refresh() -> void:
 	weak_button.text = "Prima gravità debole: %s" % ("APPLICA" if command.get("use_first_weak_gravity", false) else "ignora")
 	surface_button.visible = selected.get("landed_at", "") != "" or _landable_body(selected) != ""
 	surface_button.text = "DECOLLA" if selected.get("landed_at", "") != "" else "ATTERRA"
+	var combat_pending: bool = not state.pending_combat.is_empty()
+	attack_button.visible = state.phase == "combat" and not combat_pending and selected.owner == state.segment and not selected.destroyed and not selected.commercial and selected.get("landed_at", "") == "" and _enemy_target(selected.owner) != ""
+	counter_yes_button.visible = combat_pending
+	counter_no_button.visible = combat_pending
+	advance_button.disabled = combat_pending
 
 func _select(id: String) -> void: board.selected_ship = id; overload_planning = false; _refresh()
 func _set_thrust(direction: int) -> void:
@@ -101,6 +114,15 @@ func _surface_action() -> void:
 		if body_id == "": return
 		command = {"land_body_id": body_id}
 	state.commands[ship.id] = command; _refresh()
+func _attack() -> void:
+	var ship := _selected()
+	var target_id := _enemy_target(ship.owner)
+	if target_id == "": return
+	state = GameRulesRef.declare_attack(state, ship.id, target_id)
+	_refresh()
+func _counter(enabled: bool) -> void:
+	state = GameRulesRef.respond_to_attack(state, enabled)
+	_refresh()
 func _advance() -> void:
 	state = GameRulesRef.advance_phase(state)
 	PersistenceRef.save_game(state)
@@ -127,4 +149,9 @@ func _selected() -> Dictionary:
 func _landable_body(ship: Dictionary) -> String:
 	for body: Dictionary in state.bodies:
 		if GameRulesRef.can_land(ship, body): return body.id
+	return ""
+
+func _enemy_target(owner: String) -> String:
+	for ship: Dictionary in state.ships:
+		if ship.owner != owner and not ship.destroyed and ship.get("landed_at", "") == "": return ship.id
 	return ""

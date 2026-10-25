@@ -39,7 +39,18 @@ func _init() -> void:
 	collision_state.ships[0].landed_at = ""; collision_state.ships[0].position = terra.hex + Vector2i(2,0); collision_state.ships[0].velocity = Vector2i(-4,0); collision_state.phase = "movement"
 	collision_state = GameRulesRef.advance_phase(collision_state)
 	_check(collision_state.ships[0].destroyed, "collisione con corpo attraversato")
-	if failures == 0: print("OK: 14 test")
+	var combat_state: Dictionary = GrandTourDevRef.create_state(); combat_state.phase = "combat"
+	combat_state.ships[0].landed_at = ""; combat_state.ships[1].landed_at = ""; combat_state.ships[0].position = Vector2i.ZERO; combat_state.ships[1].position = Vector2i.ZERO
+	combat_state = GameRulesRef.declare_attack(combat_state, "p1", "p2")
+	_check(not combat_state.pending_combat.is_empty(), "dichiarazione attacco attende il difensore")
+	var blocked: Dictionary = GameRulesRef.advance_phase(combat_state)
+	_check(blocked.phase == "combat", "fase bloccata durante scelta contrattacco")
+	var old_rng: int = combat_state.rng_state; combat_state = GameRulesRef.respond_to_attack(combat_state, true)
+	_check(combat_state.pending_combat.is_empty() and combat_state.events.size() == 1 and combat_state.rng_state != old_rng, "attacco e contrattacco deterministici")
+	var damaged := ship.duplicate(true); damaged.disabled_until_turn = 4
+	GameRulesRef._apply_damage(damaged, "D3", 1)
+	_check(damaged.destroyed, "danno cumulativo a sei turni distrugge")
+	if failures == 0: print("OK: 18 test")
 	quit(failures)
 
 func _check(value: bool, label: String) -> void:

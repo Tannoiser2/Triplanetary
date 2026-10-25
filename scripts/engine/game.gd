@@ -2,6 +2,7 @@ class_name GameRules
 extends RefCounted
 
 const HexMathRef = preload("res://scripts/engine/hex.gd")
+const CombatRulesRef = preload("res://scripts/engine/combat.gd")
 
 const PHASES := ["astrogation", "ordnance", "movement", "combat", "resupply"]
 
@@ -26,6 +27,7 @@ static func move_ship(ship: Dictionary, command: Dictionary, gravity_fields: Arr
 		next.destroyed_reason = "Ricaduta dopo il decollo"
 		return next
 	next.must_burn_after_takeoff = false
+	next.previous_position = next.position
 	var applied := Vector2i.ZERO
 	for acceleration: Vector2i in next.pending_gravity: applied += acceleration
 	next.velocity += applied + thrust
@@ -49,6 +51,8 @@ static func move_ship(ship: Dictionary, command: Dictionary, gravity_fields: Arr
 
 static func advance_phase(state: Dictionary) -> Dictionary:
 	var next := state.duplicate(true)
+	if next.phase == "combat" and not next.pending_combat.is_empty():
+		return next
 	var index := PHASES.find(next.phase)
 	if next.phase == "movement":
 		for i in range(next.ships.size()):
@@ -78,6 +82,71 @@ static func advance_phase(state: Dictionary) -> Dictionary:
 		if next.segment == "P1": next.segment = "P2"
 		else: next.segment = "P1"; next.turn += 1
 	return next
+
+static func declare_attack(state: Dictionary, attacker_id: String, target_id: String) -> Dictionary:
+	var next := state.duplicate(true)
+	if next.phase != "combat" or not next.pending_combat.is_empty(): return next
+	var attacker := _ship_by_id(next.ships, attacker_id)
+	var target := _ship_by_id(next.ships, target_id)
+	var key := "%d:%s" % [next.turn, next.segment]
+	if attacker.is_empty() or target.is_empty() or attacker.owner != next.segment or target.owner == next.segment: return next
+	if attacker.destroyed or target.destroyed or attacker.commercial or attacker.get("landed_at", "") != "": return next
+	if attacker.disabled_until_turn >= next.turn and not attacker.get("dreadnought", false): return next
+	if attacker.last_attack_key == key or target.last_target_key == key: return next
+	next.pending_combat = {"attacker_id": attacker_id, "target_id": target_id, "defender": target.owner}
+	next.log.append("%s attacca %s: passare il controllo a %s" % [attacker.name, target.name, target.owner])
+	return next
+
+static func respond_to_attack(state: Dictionary, counterattack: bool) -> Dictionary:
+	var next := state.duplicate(true)
+	if next.phase != "combat" or next.pending_combat.is_empty(): return next
+	var attacker := _ship_by_id(next.ships, next.pending_combat.attacker_id)
+	var defender := _ship_by_id(next.ships, next.pending_combat.target_id)
+	var key := "%d:%s" % [next.turn, next.segment]
+	var attack_result := _resolve_gun(next, attacker, defender)
+	var counter_result := "-"
+	var may_counter: bool = counterattack and not defender.commercial and not defender.destroyed and defender.get("landed_at", "") == ""
+	if defender.disabled_until_turn >= next.turn and not defender.get("dreadnought", false): may_counter = false
+	if may_counter: counter_result = _resolve_gun(next, defender, attacker)
+	attacker.last_attack_key = key
+	defender.last_target_key = key
+	# I risultati sono applicati solo dopo entrambi i tiri.
+	_apply_damage(defender, attack_result, next.turn)
+	if may_counter: _apply_damage(attacker, counter_result, next.turn)
+	next.log.append("Fuoco: %s → %s [%s]%s" % [attacker.name, defender.name, attack_result, " · contrattacco [%s]" % counter_result if may_counter else ""])
+	next.events.append({"turn":next.turn,"segment":next.segment,"phase":"combat","attacker":attacker.id,"defender":defender.id,"attack_result":attack_result,"counter_result":counter_result if may_counter else "none"})
+	next.pending_combat = {}
+	return next
+
+static func _resolve_gun(state: Dictionary, attacker: Dictionary, defender: Dictionary) -> String:
+	var attack_path := HexMathRef.supercover_line(attacker.get("previous_position", attacker.position), attacker.position)
+	var range_hexes := 999
+	for hex: Vector2i in attack_path: range_hexes = mini(range_hexes, HexMathRef.distance(hex, defender.position))
+	var relative_velocity := HexMathRef.distance(attacker.velocity, defender.velocity)
+	var die := _roll_d6(state)
+	var result := CombatRulesRef.gun_damage(attacker.combat, defender.combat, die, range_hexes, relative_velocity, attacker.get("heroic", false))
+	var column := CombatRulesRef.odds_column(attacker.combat, defender.combat)
+	if column == 0 and result in ["D2", "D3", "D4", "D5", "E"]: attacker.heroic = true
+	state.log.append("Tiro %d; distanza %d; velocità relativa %d" % [die, range_hexes, relative_velocity])
+	return result
+
+static func _apply_damage(ship: Dictionary, result: String, turn: int) -> void:
+	if result == "-": return
+	if result == "E": ship.destroyed = true; ship.destroyed_reason = "Eliminata in combattimento"; return
+	var amount := CombatRulesRef.disabled_turns(result)
+	var remaining := maxi(0, ship.disabled_until_turn - turn)
+	if remaining + amount >= 6:
+		ship.destroyed = true; ship.destroyed_reason = "Danni cumulativi"; return
+	ship.disabled_until_turn = maxi(turn, ship.disabled_until_turn) + amount
+
+static func _roll_d6(state: Dictionary) -> int:
+	state.rng_state = int((int(state.rng_state) * 1664525 + 1013904223) & 0xffffffff)
+	return int(state.rng_state % 6) + 1
+
+static func _ship_by_id(ships: Array, id: String) -> Dictionary:
+	for ship: Dictionary in ships:
+		if ship.id == id: return ship
+	return {}
 
 static func can_overload(ship: Dictionary) -> bool:
 	return not ship.get("commercial", false) and ship.get("overload_available", false) and ship.fuel >= 2 and not ship.destroyed and ship.get("landed_at", "") == ""
