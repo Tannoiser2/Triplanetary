@@ -1,0 +1,7 @@
+.godot/
+build/
+exports/
+assets/local-reference/map-source.jpg
+*.tmp
+*.log
+
