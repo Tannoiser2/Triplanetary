@@ -2,6 +2,7 @@
 build/
 exports/
 assets/local-reference/map-source.jpg
+assets/local-reference/*.import
 *.tmp
 *.log
 
