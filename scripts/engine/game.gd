@@ -3,6 +3,8 @@ extends RefCounted
 
 const HexMathRef = preload("res://scripts/engine/hex.gd")
 const CombatRulesRef = preload("res://scripts/engine/combat.gd")
+const OrdnanceRulesRef = preload("res://scripts/engine/ordnance.gd")
+const LogisticsRulesRef = preload("res://scripts/engine/logistics.gd")
 
 const PHASES := ["astrogation", "ordnance", "movement", "combat", "resupply"]
 
@@ -63,8 +65,16 @@ static func advance_phase(state: Dictionary) -> Dictionary:
 				elif command.has("land_body_id"): _land(next.ships[i], command.land_body_id, next.bodies)
 				else: next.ships[i] = move_ship(next.ships[i], command, next.gravity, next.turn)
 				_apply_map_and_body_collisions(next.ships[i], next.bodies, next, from_position)
+				OrdnanceRulesRef.resolve_asteroid_hazards(next, next.ships[i], HexMathRef.supercover_line(from_position, next.ships[i].position))
+				if next.ships[i].get("must_change_after_launch", false):
+					var launcher_items: Array = next.ordnance.filter(func(item): return item.launcher_id == next.ships[i].id and item.age == 0)
+					if not launcher_items.is_empty() and next.ships[i].velocity == launcher_items[0].velocity:
+						next.ships[i].destroyed = true; next.ships[i].destroyed_reason = "Mancato cambio di rotta dopo il lancio"
+					next.ships[i].must_change_after_launch = false
 				next.log.append("G%d %s · %s → %s" % [next.turn, next.segment, next.ships[i].name, next.ships[i].position])
 				next.events.append({"turn": next.turn, "segment": next.segment, "phase": "movement", "ship": next.ships[i].id, "command": command.duplicate(true), "position": next.ships[i].position, "velocity": next.ships[i].velocity})
+		OrdnanceRulesRef.move_and_resolve(next)
+		LogisticsRulesRef.update_detection(next)
 	if next.phase == "resupply":
 		for i in range(next.ships.size()):
 			if next.ships[i].owner != next.segment: continue
@@ -90,6 +100,7 @@ static func declare_attack(state: Dictionary, attacker_id: String, target_id: St
 	var target := _ship_by_id(next.ships, target_id)
 	var key := "%d:%s" % [next.turn, next.segment]
 	if attacker.is_empty() or target.is_empty() or attacker.owner != next.segment or target.owner == next.segment: return next
+	if not LogisticsRulesRef.is_detected(next, attacker.owner, target.id): return next
 	if attacker.destroyed or target.destroyed or attacker.commercial or attacker.get("landed_at", "") != "": return next
 	if attacker.disabled_until_turn >= next.turn and not attacker.get("dreadnought", false): return next
 	if attacker.last_attack_key == key or target.last_target_key == key: return next

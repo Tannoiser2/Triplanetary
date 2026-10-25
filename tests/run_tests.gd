@@ -5,6 +5,8 @@ const GameRulesRef = preload("res://scripts/engine/game.gd")
 const CombatRulesRef = preload("res://scripts/engine/combat.gd")
 const GrandTourDevRef = preload("res://scripts/data/grand_tour_dev.gd")
 const PersistenceRef = preload("res://scripts/engine/persistence.gd")
+const OrdnanceRulesRef = preload("res://scripts/engine/ordnance.gd")
+const LogisticsRulesRef = preload("res://scripts/engine/logistics.gd")
 
 var failures := 0
 
@@ -50,7 +52,32 @@ func _init() -> void:
 	var damaged := ship.duplicate(true); damaged.disabled_until_turn = 4
 	GameRulesRef._apply_damage(damaged, "D3", 1)
 	_check(damaged.destroyed, "danno cumulativo a sei turni distrugge")
-	if failures == 0: print("OK: 18 test")
+	var ord_state: Dictionary = GrandTourDevRef.create_state(); ord_state.phase = "ordnance"; ord_state.ships[0].landed_at = ""; ord_state.ships[0].position = Vector2i(30,0); ord_state.ships[0].velocity = Vector2i(1,0); ord_state.ships[0].inventory.mine = 1
+	ord_state = OrdnanceRulesRef.launch(ord_state, "p1", "mine")
+	_check(ord_state.ordnance.size() == 1 and ord_state.ships[0].inventory.mine == 0, "lancio mina eredita il vettore")
+	var launch_again: Dictionary = OrdnanceRulesRef.launch(ord_state, "p1", "mine")
+	_check(launch_again.ordnance.size() == 1, "un solo ordigno per segmento")
+	ord_state.ordnance[0].position = Vector2i(40,0); ord_state.ordnance[0].previous_position = Vector2i(40,0); ord_state.ordnance[0].velocity = Vector2i.ZERO
+	for ignored in range(5): OrdnanceRulesRef.move_and_resolve(ord_state)
+	_check(ord_state.ordnance.is_empty(), "ordigno scade dopo cinque movimenti")
+	var commercial_state: Dictionary = GrandTourDevRef.create_state(); commercial_state.phase = "ordnance"; commercial_state.ships[0].landed_at = ""; commercial_state.ships[0].commercial = true; commercial_state.ships[0].inventory.torpedo = 1
+	commercial_state = OrdnanceRulesRef.launch(commercial_state, "p1", "torpedo", Vector2i(1,0))
+	_check(commercial_state.ordnance.is_empty(), "commerciale non lancia siluri")
+	var logistics_state: Dictionary = GrandTourDevRef.create_state()
+	logistics_state.ships[0].landed_at = ""; logistics_state.ships[1].landed_at = ""
+	logistics_state.ships[0].position = Vector2i.ZERO; logistics_state.ships[1].position = Vector2i.ZERO
+	logistics_state.ships[0].velocity = Vector2i(1,0); logistics_state.ships[1].velocity = Vector2i(1,0)
+	logistics_state.ships[0].inventory.mine = 1; logistics_state.ships[1].cargo_capacity = 10
+	logistics_state = LogisticsRulesRef.transfer(logistics_state, "p1", "p2", "mine", 1)
+	_check(logistics_state.ships[0].inventory.mine == 0 and logistics_state.ships[1].inventory.mine == 1, "trasferimento con posizione e rotta coincidenti")
+	var refused_transfer: Dictionary = logistics_state.duplicate(true); refused_transfer.ships[0].inventory.mine = 1; refused_transfer.ships[1].velocity = Vector2i.ZERO
+	refused_transfer = LogisticsRulesRef.transfer(refused_transfer, "p1", "p2", "mine", 1)
+	_check(refused_transfer.ships[0].inventory.mine == 1, "trasferimento rifiutato con rotta diversa")
+	_check(not LogisticsRulesRef.loadout_fits(logistics_state.ships[1], {"torpedo":1}), "capacità di carico applicata")
+	logistics_state.knowledge.P1.clear(); logistics_state.ships[1].position = Vector2i(3,0)
+	LogisticsRulesRef.update_detection(logistics_state)
+	_check(LogisticsRulesRef.is_detected(logistics_state, "P1", "p2"), "rilevamento nave entro tre esagoni")
+	if failures == 0: print("OK: 26 test")
 	quit(failures)
 
 func _check(value: bool, label: String) -> void:

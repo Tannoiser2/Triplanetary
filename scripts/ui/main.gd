@@ -5,6 +5,7 @@ const GameRulesRef = preload("res://scripts/engine/game.gd")
 const GrandTourDevRef = preload("res://scripts/data/grand_tour_dev.gd")
 const BoardRef = preload("res://scripts/ui/board.gd")
 const PersistenceRef = preload("res://scripts/engine/persistence.gd")
+const OrdnanceRulesRef = preload("res://scripts/engine/ordnance.gd")
 
 var state: Dictionary
 var board: Control
@@ -18,6 +19,7 @@ var attack_button: Button
 var counter_yes_button: Button
 var counter_no_button: Button
 var advance_button: Button
+var ordnance_buttons: Dictionary = {}
 var overload_planning := false
 
 func _ready() -> void:
@@ -45,6 +47,8 @@ func _build_ui() -> void:
 	weak_button = Button.new(); weak_button.pressed.connect(_toggle_weak_gravity); panel.add_child(weak_button)
 	var coast := Button.new(); coast.text = "Nessuna spinta"; coast.pressed.connect(_coast); panel.add_child(coast)
 	surface_button = Button.new(); surface_button.pressed.connect(_surface_action); panel.add_child(surface_button)
+	for kind in ["mine", "torpedo", "nuke"]:
+		var ordnance_button := Button.new(); ordnance_button.text = "LANCIA " + String(kind).to_upper(); ordnance_button.pressed.connect(_launch_ordnance.bind(kind)); panel.add_child(ordnance_button); ordnance_buttons[kind] = ordnance_button
 	attack_button = Button.new(); attack_button.text = "ATTACCA NAVE NEMICA"; attack_button.pressed.connect(_attack); panel.add_child(attack_button)
 	counter_yes_button = Button.new(); counter_yes_button.text = "CONTRATTACCA"; counter_yes_button.pressed.connect(_counter.bind(true)); panel.add_child(counter_yes_button)
 	counter_no_button = Button.new(); counter_no_button.text = "RINUNCIA AL CONTRATTACCO"; counter_no_button.pressed.connect(_counter.bind(false)); panel.add_child(counter_no_button)
@@ -69,6 +73,8 @@ func _refresh() -> void:
 	weak_button.text = "Prima gravità debole: %s" % ("APPLICA" if command.get("use_first_weak_gravity", false) else "ignora")
 	surface_button.visible = selected.get("landed_at", "") != "" or _landable_body(selected) != ""
 	surface_button.text = "DECOLLA" if selected.get("landed_at", "") != "" else "ATTERRA"
+	for kind in ordnance_buttons:
+		ordnance_buttons[kind].visible = state.phase == "ordnance" and selected.owner == state.segment and selected.inventory.get(kind, 0) > 0
 	var combat_pending: bool = not state.pending_combat.is_empty()
 	attack_button.visible = state.phase == "combat" and not combat_pending and selected.owner == state.segment and not selected.destroyed and not selected.commercial and selected.get("landed_at", "") == "" and _enemy_target(selected.owner) != ""
 	counter_yes_button.visible = combat_pending
@@ -122,6 +128,11 @@ func _attack() -> void:
 	_refresh()
 func _counter(enabled: bool) -> void:
 	state = GameRulesRef.respond_to_attack(state, enabled)
+	_refresh()
+func _launch_ordnance(kind: String) -> void:
+	var ship := _selected()
+	var acceleration := Vector2i(1, 0) if kind == "torpedo" else Vector2i.ZERO
+	state = OrdnanceRulesRef.launch(state, ship.id, kind, acceleration)
 	_refresh()
 func _advance() -> void:
 	state = GameRulesRef.advance_phase(state)

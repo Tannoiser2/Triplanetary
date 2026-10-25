@@ -28,3 +28,5 @@ Archivio ZIP valido con 2 Unity assetbundle, 6 immagini PNG, anteprima e `Mods/W
 ## Asset sostitutivi
 
 Per una release pubblica: griglia e simboli procedurali, silhouettes originali, nomi/testi solo quanto autorizzato, font con licenza compatibile, nessuna scansione o texture Workshop incorporata.
+
+La copertina `ludoteca/copertina.webp` è stata creata appositamente per questo repository con forme geometriche, tipografia e grafica orbitale originali. Non contiene scansioni, pedine o illustrazioni tratte dai materiali allegati.

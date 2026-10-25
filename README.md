@@ -7,7 +7,7 @@ Prototipo locale e specifiche italiane per una versione digitale fedele all'**Up
 - Motore GDScript: coordinate esagonali assiali, inerzia, spinta, carburante, gravità piena e debole differita, sovraccarico, decollo/atterraggio, collisioni e tabella di combattimento.
 - Prototipo Godot hot-seat a due giocatori con sequenza di fasi, rendering procedurale e registro eventi.
 - Scenario `Grand Tour` giocabile sulla **development map**, con partenza atterrata, visite, rifornimento, ritorno e vittoria. La trascrizione completa della plancia deve ancora essere verificata.
-- Salvataggio/caricamento locale e autosave. Il combattimento 1v1 con contrattacco e danni è operativo; attacchi combinati, ordigni, rilevamento, cargo e scenari successivi restano nel backlog.
+- Salvataggio/caricamento locale e autosave. Sono operativi combattimento 1v1, contrattacco, danni, ordigni vettoriali, asteroidi, rilevamento e regole di carico/trasferimento. Attacchi combinati, interfaccia logistica completa e scenari successivi restano nel backlog.
 - Lo stato preciso, senza sovrastimare la completezza, è in `STATUS.md`.
 
 ## Avvio
@@ -29,7 +29,7 @@ L'export browser usa il preset `Web`, single-threaded per essere compatibile con
 godot --headless --path . --export-release Web docs/index.html
 ```
 
-La workflow `.github/workflows/pages.yml` pubblica la cartella `docs/` a ogni push su `main`.
+La workflow `.github/workflows/pages.yml` pubblica la cartella `docs/` a ogni push su `main`. La cartella `ludoteca/` espone una scheda autonoma alla [Ludoteca Virtuale](https://tannoiser2.github.io/) e contiene solo grafica originale del progetto.
 
 ## Ordine di lettura per Codex
 

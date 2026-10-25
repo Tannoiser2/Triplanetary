@@ -19,16 +19,21 @@ Aggiornato al 26 ottobre 2026.
 - Tabella base del fuoco e RNG/risoluzione deterministica del motore.
 - Attacco nave contro nave, scelta del contrattacco con passaggio di mano, distanza minima, velocità relativa, eroismo e applicazione simultanea dei risultati.
 - Disabilitazioni cumulative e distruzione a sei turni residui.
-- 18 test headless.
+- Mine, siluri e testate nucleari come entità vettoriali: inventario, massa, lancio, gravità, contatti ed eliminazione dopo cinque movimenti.
+- Campi di asteroidi, rischio deterministico, asteroidi speciali e rimozione tramite testata nucleare.
+- Regole motore per carico, capienza, trasferimento di materiali e carburante fra navi sulla stessa rotta.
+- Rilevamento persistente da navi e basi, occultamento dopo l'atterraggio in una base amica e blocco del fuoco contro bersagli non rilevati.
+- Scheda e copertina originale per l'inclusione automatica nella Ludoteca Virtuale.
+- 26 test headless.
 
 ## Ancora incompleto
 
-- Trascrizione certificata di ogni esagono della mappa, asteroidi, basi e detector.
+- Revisione manuale finale della trascrizione di ogni esagono della mappa, degli asteroidi, delle basi e dei detector.
 - Collisione sub-esagono con il disco grafico anziché con l'intero esagono centrale.
 - Attacchi combinati con più navi, ramming e selezione multipla dei bersagli.
-- Mine, siluri e testate nucleari.
-- Basi orbitali/asteroidali, difese, cargo, trasferimenti, resa e cattura.
-- Fog of war, rilevamento, dummy e schermata privacy.
+- Interfaccia completa per scegliere vettore dei siluri, carico e trasferimenti (le regole di motore sono presenti).
+- Basi orbitali/asteroidali, difese, resa e cattura.
+- Dummy e schermata privacy hot-seat (il rilevamento di motore e l'occultamento sulla plancia sono presenti).
 - Replay navigabile ed export/import portabile del salvataggio.
 - Gli altri sette scenari.
 

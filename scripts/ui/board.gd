@@ -30,6 +30,10 @@ func _draw() -> void:
 	else:
 		for column in range(56):
 			for row in range(35): _draw_hex(_offset_to_axial(column, row), Color("b9b7ad"))
+		for hex: Vector2i in state.get("asteroids", []):
+			draw_circle(axial_to_pixel(hex), 7, Color("a77945"))
+		for hex: Vector2i in state.get("special_asteroids", []):
+			draw_circle(axial_to_pixel(hex), 8, Color("6f9fc5"))
 	for field: Dictionary in state.gravity:
 		var p := axial_to_pixel(field.hex)
 		var target := axial_to_pixel(field.hex + field.acceleration)
@@ -39,11 +43,17 @@ func _draw() -> void:
 		draw_circle(p, 13 if body.id == "sol" else 9, Color("f6b94c") if body.id == "sol" else Color("dceaf3"))
 		draw_string(ThemeDB.fallback_font, p + Vector2(13, -11), body.name, HORIZONTAL_ALIGNMENT_LEFT, -1, 12, Color("a9bfd0"))
 	for ship: Dictionary in state.ships:
+		if ship.owner != state.segment and not state.get("knowledge", {}).get(state.segment, {}).get(ship.id, false): continue
 		var p := axial_to_pixel(ship.position) + Vector2(-5 if ship.owner == "P1" else 5, 0)
 		var color := Color("55d6be") if ship.owner == "P1" else Color("ff6b6b")
 		draw_circle(p, 7, color)
 		if ship.id == selected_ship: draw_arc(p, 10, 0, TAU, 24, Color.WHITE, 2)
 		draw_line(p, axial_to_pixel(ship.position + ship.velocity), color, 2)
+	for item: Dictionary in state.get("ordnance", []):
+		var p := axial_to_pixel(item.position)
+		var label := "M" if item.kind == "mine" else ("T" if item.kind == "torpedo" else "N")
+		draw_circle(p, 6, Color("d74848") if item.kind == "nuke" else Color("2d2d2d"))
+		draw_string(ThemeDB.fallback_font, p + Vector2(8, 4), label, HORIZONTAL_ALIGNMENT_LEFT, -1, 12, Color("2d2d2d"))
 	draw_set_transform(Vector2.ZERO, 0.0, Vector2.ONE)
 
 func _offset_to_axial(column: int, row: int) -> Vector2i:
