@@ -4,10 +4,11 @@ Prototipo locale e specifiche italiane per una versione digitale fedele all'**Up
 
 ## Stato
 
-- Motore GDScript iniziale: coordinate esagonali assiali, inerzia, spinta, carburante, gravità piena differita e cumulativa e tabella di combattimento.
+- Motore GDScript: coordinate esagonali assiali, inerzia, spinta, carburante, gravità piena e debole differita, sovraccarico, decollo/atterraggio, collisioni e tabella di combattimento.
 - Prototipo Godot hot-seat a due giocatori con sequenza di fasi, rendering procedurale e registro eventi.
-- Scenario `Grand Tour` in modalità **development map**. La logica di gara è specificata, ma le coordinate della mappa sono provvisorie finché non viene completata la trascrizione verificata della plancia.
-- Non ancora implementati nel prototipo: gravità debole opzionale, collisioni sub-esagono, orbite/atterraggi, combattimento UI, ordigni, rilevamento, basi/resupply, cargo, salvataggi e vittoria automatica. Sono coperti da specifiche e backlog.
+- Scenario `Grand Tour` giocabile sulla **development map**, con partenza atterrata, visite, rifornimento, ritorno e vittoria. La trascrizione completa della plancia deve ancora essere verificata.
+- Salvataggio/caricamento locale e autosave. Combattimento UI, ordigni, rilevamento, cargo e scenari successivi restano nel backlog.
+- Lo stato preciso, senza sovrastimare la completezza, è in `STATUS.md`.
 
 ## Avvio
 

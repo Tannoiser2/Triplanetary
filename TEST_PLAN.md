@@ -44,4 +44,4 @@ Tutti i P0 verdi; 100% righe tabella combattimento coperte; figure movimento val
 
 ## Test già presenti
 
-`tests/run_tests.gd` copre inerzia, gravità differita, distanza/linea, arrotondamento rapporti e modificatore velocità relativa. Si esegue con `godot --headless --path . --script tests/run_tests.gd`. Sono smoke test, non il criterio finale.
+`tests/run_tests.gd` contiene 14 controlli per inerzia, gravità differita/debole, supercover, sovraccarico, decollo/ricaduta, collisioni, persistenza, distanza e combattimento. Si esegue con `godot --headless --path . --script tests/run_tests.gd`. Restano smoke test, non il criterio finale.
