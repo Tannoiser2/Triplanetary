@@ -83,12 +83,12 @@ static func _befriend(state: Dictionary) -> void:
 		elif b.owner == "P2": b.friends = ["P1"]
 
 static func _open_bloc_shop(state: Dictionary, pid: String) -> void:
-	Fleet.open_shop(state, pid, 50.0, "pts", BLOC_ITEMS, {"title": "Flotta del %s" % Rules.player(state, pid).name,
+	Fleet.open_shop(state, pid, 50.0, "pts", BLOC_ITEMS, {"title": "Flotta di %s" % Rules.player(state, pid).name,
 		"note": "50 punti di forza; le navi commerciali costano metà."})
 
 static func shop_done(state: Dictionary, pid: String, _cart: Dictionary, queue: Array, _spent: float) -> void:
 	var worlds := ["terra", "luna", state.sd.colony[pid]]
-	Fleet.open_deploy(state, pid, queue, {"landed": worlds}, "Schieramento: le navi partono dalle basi amiche")
+	Fleet.open_deploy(state, pid, queue, {"landed": worlds}, "Partenza dalle basi amiche")
 
 static func step_done(state: Dictionary) -> void:
 	var pid: String = state.setup.player

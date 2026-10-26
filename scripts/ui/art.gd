@@ -153,6 +153,11 @@ const SHIPS := {
 		[Vector2(0.45, -0.62), Vector2(-0.6, -0.62), Vector2(-0.7, -0.45), Vector2(-0.6, -0.3), Vector2(0.45, -0.3), Vector2(0.55, -0.45)], [Vector2(0.45, 0.3), Vector2(-0.6, 0.3), Vector2(-0.7, 0.45), Vector2(-0.6, 0.62), Vector2(0.45, 0.62), Vector2(0.55, 0.45)]],
 	"liner": [[Vector2(0.95, 0), Vector2(0.75, -0.26), Vector2(-0.6, -0.3), Vector2(-0.85, -0.5), Vector2(-0.95, -0.5), Vector2(-0.82, 0), Vector2(-0.95, 0.5), Vector2(-0.85, 0.5), Vector2(-0.6, 0.3), Vector2(0.75, 0.26)]],
 	"packet": [[Vector2(0.75, -0.25), Vector2(0.75, 0.25), Vector2(-0.6, 0.35), Vector2(-0.85, 0.2), Vector2(-0.85, -0.2), Vector2(-0.6, -0.35)]],
+	"orbital_base": [[Vector2(-0.3, -0.3), Vector2(0.3, -0.3), Vector2(0.3, 0.3), Vector2(-0.3, 0.3)],
+		[Vector2(-0.95, -0.12), Vector2(-0.35, -0.12), Vector2(-0.35, 0.12), Vector2(-0.95, 0.12)],
+		[Vector2(0.35, -0.12), Vector2(0.95, -0.12), Vector2(0.95, 0.12), Vector2(0.35, 0.12)],
+		[Vector2(-0.12, -0.95), Vector2(0.12, -0.95), Vector2(0.12, -0.35), Vector2(-0.12, -0.35)],
+		[Vector2(-0.12, 0.35), Vector2(0.12, 0.35), Vector2(0.12, 0.95), Vector2(-0.12, 0.95)]],
 	"torch": [[Vector2(0.98, 0), Vector2(0.2, -0.14), Vector2(-0.55, -0.14), Vector2(-0.7, -0.4), Vector2(-0.85, -0.4), Vector2(-0.75, 0), Vector2(-0.85, 0.4), Vector2(-0.7, 0.4), Vector2(-0.55, 0.14), Vector2(0.2, 0.14)]],
 }
 

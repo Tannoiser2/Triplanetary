@@ -179,6 +179,7 @@ func _draw() -> void:
 	_draw_asteroids()
 	_draw_bodies()
 	_draw_bases()
+	_draw_prospecting()
 	_draw_overlay_hexes()
 	_draw_histories()
 	_draw_ordnance()
@@ -301,6 +302,11 @@ func _draw_bodies() -> void:
 			if d.body == b.id:
 				var dv := world(Hex.DIRS[int(d.side)]).normalized()
 				draw_arc(c, r + 0.08, dv.angle() - 0.5, dv.angle() + 0.5, 12, UITheme.DANGER, 0.12)
+				draw_circle(c + dv * (r + 0.1), 0.09, Color(1.0, 0.55, 0.2))
+		for d2 in state.sd.get("suppressed", []) if state.scenario == "fleet-mutiny" else []:
+			if d2.body == b.id:
+				var dv2 := world(Hex.DIRS[int(d2.side)]).normalized()
+				draw_arc(c, r + 0.1, dv2.angle() - 0.48, dv2.angle() + 0.48, 12, Color(UITheme.WARN, 0.95), 0.1)
 	# nomi
 	if zoom >= 7.0:
 		for b in _map.bodies:
@@ -341,6 +347,28 @@ func _draw_bases() -> void:
 		draw_circle(p, 0.04, col)
 		if not b.get("fuel", true) and state.scenario == "grand-tour":
 			pass
+
+func _draw_prospecting() -> void:
+	if state.scenario != "prospecting": return
+	for k in state.sd.prospected:
+		var parts: PackedStringArray = k.split(",")
+		var h := Vector2i(int(parts[0]), int(parts[1]))
+		var c := world(h)
+		if state.sd.prospected[k] == "ore":
+			var pts := _hex_poly(c, 0.92)
+			var closed := pts.duplicate(); closed.append(pts[0])
+			draw_polyline(closed, Color("ffd36a"), 2.2 / zoom)
+			draw_circle(c + Vector2(0.45, -0.45), 0.14, Color("ffd36a"))
+		else:
+			draw_line(c + Vector2(-0.2, -0.2), c + Vector2(0.2, 0.2), Color(1, 1, 1, 0.45), 1.6 / zoom)
+			draw_line(c + Vector2(-0.2, 0.2), c + Vector2(0.2, -0.2), Color(1, 1, 1, 0.45), 1.6 / zoom)
+	for k in state.sd.claims:
+		var cl: Dictionary = state.sd.claims[k]
+		var cc := world(cl.hex)
+		var col := UITheme.player_color(state, cl.owner)
+		draw_rect(Rect2(cc + Vector2(-0.62, 0.3), Vector2(0.34, 0.34)), col)
+		if cl.guards: draw_arc(cc, 0.8, 0, TAU, 24, Color(col, 0.8), 2.0 / zoom)
+		if zoom > 14.0: _text_world("%.0ft" % (int(cl.stock10) / 10.0), cc + Vector2(-0.45, 0.85), 0.28, col.lightened(0.3), Art.board_font_bold, true)
 
 func _draw_overlay_hexes() -> void:
 	for h in overlay.get("place_hexes", []):

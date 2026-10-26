@@ -43,7 +43,7 @@ static func shop_done(state: Dictionary, pid: String, cart: Dictionary, queue: A
 		if pid == "P1": state.sd.pool.terra = float(state.sd.pool.terra) - spent
 		else: state.sd.mcr.P2 = float(state.sd.mcr.P2) - spent
 		state.sd.mid = false
-		state.phase = "resupply"
+		state.phase = state.sd.get("mid_phase", "resupply")
 		state.setup = {}
 		var map := Rules.map_of(state)
 		for u in queue:
@@ -70,7 +70,7 @@ static func _home_base(state: Dictionary, pid: String) -> Dictionary:
 	return {}
 
 static func can_buy_now(state: Dictionary, pid: String) -> String:
-	if state.phase != "resupply" or Rules.current_player(state) != pid: return "Si compra nella propria fase di rifornimento."
+	if not (state.phase in ["astrogation", "resupply"]) or Rules.current_player(state) != pid: return "Si compra in astrogazione o rifornimento, nel proprio segmento."
 	if _home_base(state, pid).is_empty(): return "Le basi di %s sono distrutte." % ("Terra" if pid == "P1" else "Callisto")
 	if spendable(state, pid) < 10.0: return "Crediti insufficienti."
 	return ""
@@ -79,6 +79,7 @@ static func open_mid_shop(state: Dictionary, pid: String) -> String:
 	var err := can_buy_now(state, pid)
 	if err != "": return err
 	state.sd.mid = true
+	state.sd.mid_phase = state.phase
 	Fleet.open_shop(state, pid, spendable(state, pid), "mcr", ITEMS, {"title": "Cantiere di %s" % ("Terra" if pid == "P1" else "Callisto"),
 		"note": "Le navi nuove compaiono a terra sulla base di casa."})
 	return ""

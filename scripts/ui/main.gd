@@ -52,7 +52,7 @@ var help: Control
 var menu_scenario := "grand-tour"
 var menu_seats: Array = []
 var menu_detail: VBoxContainer
-var menu_options := {"sol_classic": false, "liner_terra": false}
+var menu_options := {"sol_classic": false, "liner_terra": false, "nova_allied": true, "length": 120}
 
 func _ready() -> void:
 	theme = UITheme.theme()
@@ -372,6 +372,18 @@ func _auto_select(who: String) -> void:
 	if state.phase == "setup" and state.scenario == "lateral-7":
 		board.center_on(SolarMap.body(Rules.map_of(state), "ceres").hex + Vector2i(8, 1), 17.0)
 		return
+	if state.phase == "setup":
+		if state.setup.get("step", "") == "deploy":
+			var sp: Array = Fleet.spots(state).keys()
+			if not sp.is_empty() and sp.size() < 200:
+				var c := Vector2.ZERO
+				for h in sp: c += Board.world(h)
+				c /= sp.size()
+				board.zoom = maxf(board.zoom, 15.0)
+				board.offset = board._safe().get_center() - c * board.zoom
+				board.queue_redraw()
+			else: board.fit()
+		return
 	var cur := Rules.ship(state, sel)
 	if not cur.is_empty() and cur.owner == who and Rules.alive(cur): return
 	for s in state.ships:
@@ -412,7 +424,9 @@ func _auto_skip() -> bool:
 	match state.phase:
 		"setup": return false
 		"astrogation":
-			return not state.ships.any(func(s): return s.owner == me and Rules.alive(s) and not s.get("dummy", false) and (s.landed == "" or Rules.can_take_off(state, s)) and not _finished(s))
+			if state.scenario == "interplanetary-war" and ScenWar.can_buy_now(state, me) == "": return false
+			if state.scenario == "retribution" and me == "P1" and ScenRetribution.can_form(state): return false
+			return not state.ships.any(func(s): return s.owner == me and Rules.alive(s) and not s.get("dummy", false) and not s.get("is_base", false) and not s.get("parked", false) and (s.landed == "" or Rules.can_take_off(state, s)) and not _finished(s))
 		"ordnance":
 			if not state.rules.get("ordnance", true): return true
 			for s in state.ships:
@@ -423,6 +437,7 @@ func _auto_skip() -> bool:
 		"movement": return true
 		"combat":
 			if not state.rules.get("combat", true): return true
+			if state.scenario == "fleet-mutiny" and state.ships.any(func(x): return x.owner == me and not ScenMutiny.suppress_target(state, x).is_empty()): return false
 			return _possible_attacks(me).is_empty()
 		"resupply":
 			return not _resupply_has_choices(me)
@@ -451,6 +466,9 @@ func _hit_chance(p: Dictionary) -> float:
 func _resupply_has_choices(me: String) -> bool:
 	for s in state.ships:
 		if s.owner != me or not Rules.alive(s) or s.get("dummy", false): continue
+		if state.scenario == "prospecting":
+			if ScenProspecting.can_sell(state, s) == "" or not ScenProspecting.claim_actions(state, s).is_empty(): return true
+			if ScenProspecting.can_buy(state, s, "fuel") == "": return true
 		for k in ["mine", "torpedo", "nuke"]:
 			if Rules.can_load(state, s, k) == "": return true
 		if _matched_actions(s).size() > 0: return true
@@ -527,6 +545,21 @@ func _select_at(h: Vector2i) -> bool:
 	return true
 
 func _click_setup(h: Vector2i) -> void:
+	var step: String = state.setup.get("step", "")
+	if step == "deploy":
+		var err0 := Fleet.place(state, h)
+		if err0 != "": _toast(err0, true)
+		else:
+			_after_step(state.log.size())
+			_flow()
+		return
+	if step == "designate":
+		for s in _ships_at(h):
+			if s.owner == "P1":
+				var e1 := ScenMutiny.toggle_pick(state, s.id)
+				if e1 != "": _toast(e1, true)
+				return
+		return
 	if state.scenario == "escape":
 		for s in _ships_at(h):
 			if s.owner == "P1":
@@ -749,6 +782,12 @@ func _refresh_overlay() -> void:
 		for pair in _possible_attacks(me):
 			if not tg.has(pair[1]): tg.append(pair[1])
 		ov.targetable = tg
+	elif state.phase == "setup" and human and state.setup.get("step", "") == "deploy":
+		ov.place_hexes = Fleet.spots(state).keys()
+		ov.pulse = true
+	elif state.phase == "setup" and human and state.setup.get("step", "") == "designate":
+		ov.attackers = state.setup.picks.duplicate()
+		ov.targetable = state.ships.filter(func(x): return x.owner == "P1" and Rules.alive(x)).map(func(x): return x.id)
 	elif state.phase == "setup" and human and state.scenario == "lateral-7":
 		ov.place_hexes = state.asteroids.filter(func(h): return Scenarios.can_place(state, h))
 		ov.pulse = true
@@ -781,7 +820,7 @@ func _refresh_top() -> void:
 	player_label.text = "%s%s%s" % [nm, (" · " + role) if role != "" and role != "Pilota" and role != nm else "", "  (IA)" if p.get("type", "") == "ai" else ""]
 	player_chip.add_theme_stylebox_override("panel", UITheme.box(Color(col, 0.16), col, 20, 1, 8))
 	if state.phase == "setup":
-		top_day.text = "SCHIERAMENTO"
+		top_day.text = {"shop": "ACQUISTI", "deploy": "SCHIERAMENTO", "choose": "PREPARAZIONE", "designate": "AMMUTINAMENTO"}.get(state.setup.get("step", ""), "SCHIERAMENTO")
 
 func _clear(c: Node) -> void:
 	for ch in c.get_children():
@@ -793,7 +832,7 @@ func _refresh_side() -> void:
 	var me := _active_player()
 	var view := board.viewer if board.viewer != "" else me
 	_build_objectives(view)
-	var mine: Array = state.ships.filter(func(s): return s.owner == view and not s.get("dummy", false) and (Rules.alive(s) or s.destroyed))
+	var mine: Array = state.ships.filter(func(s): return s.owner == view and not s.get("dummy", false) and not s.get("retired", false) and (Rules.alive(s) or s.destroyed))
 	if mine.is_empty():
 		fleet_box.add_child(UITheme.label("Nessuna nave in gioco.", 15, UITheme.TEXT_DIM))
 	for s in mine:
@@ -847,6 +886,65 @@ func _build_objectives(view: String) -> void:
 			else: t2 = "Porta la nave di linea in un campo di gravità di Ganimede. Il Tycho Brahe si muove solo dopo aver rilevato un pirata."
 			t2 += "\nPasseggeri: [b]%s[/b]" % (holder.name if not holder.is_empty() and Rules.is_known(state, view, holder) else "nave sconosciuta")
 			objective_box.add_child(_rich(t2, 15))
+		_:
+			_objectives_extra(view)
+
+func _objectives_extra(view: String) -> void:
+	var map := Rules.map_of(state)
+	match state.scenario:
+		"nova":
+			objective_box.add_child(UITheme.caption("Nova"))
+			var aliens: Array = state.ships.filter(func(x): return x.owner == "P3")
+			var alive_n := aliens.filter(func(x): return Rules.alive(x)).size()
+			var txt := ""
+			if view == "P3": txt = "Porta un corsaro in [b]orbita attorno al Sole[/b] (velocità 1 fra due esagoni di gravità solare, senza spinta)."
+			else: txt = "Distruggi l'ultima nave aliena prima che entri in orbita attorno al Sole. Vince chi la abbatte."
+			if not state.sd.colony.is_empty():
+				txt += "\nColonie: WestBloc a [b]%s[/b], EastBloc a [b]%s[/b]." % [SolarMap.body(map, state.sd.colony.P1).name, SolarMap.body(map, state.sd.colony.P2).name]
+			if not aliens.is_empty(): txt += "\nNavi aliene in gioco: [b]%d / 4[/b]" % alive_n
+			objective_box.add_child(_rich(txt, 15))
+		"retribution":
+			objective_box.add_child(UITheme.caption("Retribution"))
+			var sd: Dictionary = state.sd
+			var t2 := "Corvette partite: [b]%d / 10[/b] · a Clandestine: [b]%d[/b] · schiantate sulla Terra: [b]%d[/b]" % [int(sd.spawned), ScenRetribution.parked(state).size(), int(sd.terra_hits)]
+			if sd.formed: t2 = "La [b]Flotta della Libertà[/b] è in campo."
+			if view == "P1": t2 += "\nObiettivo: distruggere la flotta Enforcer."
+			else:
+				t2 += "\nObiettivo: sopravvivere e schiacciare la ribellione."
+				if not sd.patrol.is_empty() and not sd.formed: t2 += "\nIn Security Patrol: %s" % ", ".join(sd.patrol.map(func(id): return Rules.ship(state, id).name))
+			if int(sd.enf_grounded) > 0: t2 += "\n[color=#ffc94a]Enforcers a terra da %d turni (12 = sconfitta)[/color]" % int(sd.enf_grounded)
+			if int(sd.reb_grounded) > 0: t2 += "\n[color=#ffc94a]Ribelli a terra da %d turni (12 = sconfitta)[/color]" % int(sd.reb_grounded)
+			objective_box.add_child(_rich(t2, 15))
+		"fleet-mutiny":
+			objective_box.add_child(UITheme.caption("The Fleet Mutiny"))
+			var n := ScenMutiny.terra_suppressed(state)
+			var t3 := "Lati della Terra soppressi: [b]%d / 6[/b]" % n
+			t3 += "\nRibelli: ne bastano 4. Impero: elimina tutti i ribelli con meno di 3 lati soppressi."
+			t3 += "\nPer sopprimere: nave in orbita sopra il lato, in fase di combattimento."
+			objective_box.add_child(_rich(t3, 15))
+		"interplanetary-war":
+			objective_box.add_child(UITheme.caption("Interplanetary War"))
+			var t4 := "Lati devastati: Terra [b]%d[/b] · Luna [b]%d[/b]" % [ScenWar.devastated(state, "terra"), ScenWar.devastated(state, "luna")]
+			if view == "P1":
+				t4 += "\nCrediti: Terra [b]%s[/b] · Luna %s · Venere %s (da portare con navi commerciali)" % [Fleet.fmt_mcr(state.sd.pool.terra), Fleet.fmt_mcr(state.sd.pool.luna), Fleet.fmt_mcr(state.sd.pool.venus)]
+			else:
+				t4 += "\nCrediti ribelli: [b]%s MCr[/b]" % Fleet.fmt_mcr(state.sd.mcr.P2)
+			var hw: String = ScenWar.home(view)
+			if state.sd.stock.has(hw):
+				var stk: Dictionary = state.sd.stock[hw]
+				t4 += "\nDeposito di %s: %d mine, %d siluri, %d testate" % [SolarMap.body(map, hw).name, int(stk.mine), int(stk.torpedo), int(stk.nuke)]
+			objective_box.add_child(_rich(t4, 15))
+		"prospecting":
+			objective_box.add_child(UITheme.caption("Prospecting · giorno %d di %d" % [int(state.turn), int(state.sd.length)]))
+			var lines := []
+			for p in state.players:
+				var col := UITheme.player_color(state, p.id).to_html(false)
+				lines.append("[color=#%s]■[/color] %s: [b]%s MCr[/b]" % [col, p.name, Fleet.fmt_mcr(state.sd.mcr.get(p.id, 0.0))])
+			var mine_claims := 0
+			for k in state.sd.claims:
+				if state.sd.claims[k].owner == view: mine_claims += 1
+			lines.append("Asteroidi prospettati: %d · tue concessioni: %d" % [state.sd.prospected.size(), mine_claims])
+			objective_box.add_child(_rich("\n".join(lines), 15))
 
 func _rich(text: String, size := 16) -> RichTextLabel:
 	var r := RichTextLabel.new()
@@ -936,10 +1034,17 @@ func _build_detail(s: Dictionary) -> void:
 	var lines := [
 		"[font_size=19][b][color=#%s]%s[/color][/b][/font_size]" % [col.to_html(false), s.name],
 		"%s · forza [b]%s[/b]%s" % [t.name, ShipTypes.strength_label(s.type), " · commerciale" if s.commercial else ""],
-		"Carburante [b]%s[/b] · stiva %d/%d t" % ["∞" if s.infinite_fuel else "%d/%d" % [s.fuel, s.max_fuel], cargo, int(s.cargo)],
+		"Carburante [b]%s[/b] · stiva %s" % ["∞" if s.infinite_fuel else "%d/%d" % [s.fuel, s.max_fuel], "illimitata" if int(s.cargo) > 1000 else "%d/%d t" % [int(ceilf(cargo)), int(s.cargo)]],
 		"Vettore [b]%d[/b] · gravità in arrivo [b]%d[/b] · sovraccarico %s" % [Hex.length(s.vel), s.grav.size(), "pronto" if Rules.can_overload(state, s) else ("no" if s.commercial else "usato")],
 	]
+	for k in ["automated_mine", "robot_guards", "pm_grapples", "ct_shard"]:
+		if int(s.inv.get(k, 0)) > 0: inv.append("%d %s" % [s.inv[k], ShipTypes.ITEM_NAME[k].to_lower()])
+	if int(s.get("ore10", 0)) > 0: inv.append("%.1f t di minerale" % (int(s.ore10) / 10.0))
+	if float(s.get("mcr", 0.0)) > 0.0: inv.append("%s MCr" % Fleet.fmt_mcr(s.mcr))
 	if not inv.is_empty(): lines.append("A bordo: " + ", ".join(inv))
+	if s.get("is_base", false): lines.append("[color=#9aa7c2]Base orbitale: rifornisce le navi che accoppiano la rotta e lancia un siluro per turno.[/color]")
+	if state.scenario == "retribution" and ScenRetribution.on_patrol(state, s): lines.append("[color=#ffc94a]Terran Security Patrol: resta entro 5 esagoni da Terra o Luna[/color]")
+	if s.get("parked", false): lines.append("[color=#5be38f]Missione compiuta: attende la Flotta della Libertà[/color]")
 	if state.scenario == "escape" and s.owner == "P1" and board.viewer == "P1" and state.sd.get("fugitive", "") == s.id:
 		lines.append("[color=#5be38f]★ Porta i fuggitivi[/color]")
 	if state.scenario == "escape" and state.sd.get("inspected", []).has(s.id):
@@ -960,7 +1065,9 @@ func _build_actions(me: String) -> void:
 	var s := Rules.ship(state, sel)
 	match state.phase:
 		"setup":
-			if state.scenario == "escape":
+			if not (state.scenario in ["escape", "lateral-7"]):
+				_build_setup_actions(me)
+			elif state.scenario == "escape":
 				actions.add_child(_rich("Clicca in segreto sul trasporto che porta i [b]fuggitivi[/b] (sulla Terra).", 16))
 				for t in state.ships.filter(func(x): return x.owner == "P1"):
 					var b := _action_button("FUGGITIVI SUL %s" % t.name.to_upper())
@@ -981,6 +1088,7 @@ func _build_actions(me: String) -> void:
 						_after_step(n)
 						_refresh(); _flow())
 		"astrogation":
+			_build_scenario_commands(me)
 			if s.is_empty() or s.owner != me or not Rules.alive(s):
 				actions.add_child(_rich("Seleziona una nave (sulla plancia o nella flotta) per tracciarne la rotta.", 15))
 				return
@@ -1008,6 +1116,20 @@ func _build_actions(me: String) -> void:
 		"combat":
 			if not state.pending_attack.is_empty():
 				return
+			if state.scenario == "fleet-mutiny" and not s.is_empty() and s.owner == me:
+				var tg := ScenMutiny.suppress_target(state, s)
+				if not tg.is_empty():
+					var sb := UITheme.primary_button("SOPPRIMI IL LATO %d DI %s" % [int(tg.side) + 1, String(tg.name).to_upper()])
+					sb.custom_minimum_size = Vector2(0, 44)
+					sb.tooltip_text = "La nave in orbita usa il suo fuoco per neutralizzare quel lato del pianeta: niente altri attacchi in questa fase."
+					sb.pressed.connect(func():
+						var n = state.log.size()
+						var e := ScenMutiny.suppress(state, s.id)
+						if e != "": _toast(e, true)
+						_after_step(n)
+						_refresh()
+						if state.over: _show_victory())
+					actions.add_child(sb)
 			actions.add_child(_rich("Clicca le tue navi per formare il gruppo d'attacco, poi i bersagli nemici nello stesso esagono.", 15))
 			if not attackers.is_empty() and not targets.is_empty():
 				var a_list: Array = attackers.map(func(id): return Rules.ship(state, id))
@@ -1021,12 +1143,14 @@ func _build_actions(me: String) -> void:
 				var clr := _action_button("ANNULLA SELEZIONE")
 				clr.pressed.connect(func(): attackers = []; targets = []; _refresh())
 		"resupply":
+			_build_scenario_commands(me)
 			if s.is_empty() or s.owner != me:
 				actions.add_child(_rich("Le navi in base o in orbita sopra una base amica si riforniscono a fine fase.", 15))
 				return
 			var b0 := Rules.docked_base(state, s)
 			if not b0.is_empty():
-				actions.add_child(_rich("Accoppiata con la base di %s." % SolarMap.body(Rules.map_of(state), b0.body).name, 15))
+				actions.add_child(_rich("Accoppiata con: [b]%s[/b]." % Rules.base_name(state, b0), 15))
+			if state.scenario == "prospecting": _build_prospect_actions(s)
 			for k in ["mine", "torpedo", "nuke"]:
 				var err3 := Rules.can_load(state, s, k)
 				if err3 == "" or int(s.inv.get(k, 0)) > 0 and not b0.is_empty():
@@ -1053,6 +1177,107 @@ func _build_actions(me: String) -> void:
 				var sb := _action_button("ARRENDITI")
 				sb.tooltip_text = "La nave si arrende: il nemico può saccheggiarla senza disabilitarla."
 				sb.pressed.connect(func(): Rules.surrender(state, s.id); _append_log(state.log[-1]); _refresh())
+
+# ---------------------------------------------------------------- preparazione degli scenari con acquisti
+
+func _setup_done() -> void:
+	_after_step(state.log.size())
+	_refresh()
+	_flow()
+
+func _build_setup_actions(me: String) -> void:
+	var st: Dictionary = state.setup
+	var title := UITheme.label(String(st.get("title", "Preparazione")).to_upper(), 17, UITheme.ACCENT, UITheme.display)
+	title.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	title.custom_minimum_size = Vector2(200, 0)
+	actions.add_child(title)
+	match st.get("step", ""):
+		"choose":
+			actions.add_child(_rich(st.get("prompt", ""), 16))
+			for o in st.options:
+				var b := _action_button(String(o.label).to_upper())
+				b.pressed.connect(func():
+					var err := Scenarios.choose(state, o.value)
+					if err != "": _toast(err, true)
+					_setup_done())
+		"shop": _build_shop(st)
+		"deploy":
+			var unit := Fleet.current_unit(state)
+			if unit.is_empty(): return
+			var nm: String = unit.get("name", ShipTypes.TYPES[unit.type].name)
+			actions.add_child(_rich("Colloca: [b]%s[/b] (%d da schierare)\nClicca un esagono evidenziato in verde." % [nm, st.queue.size()], 16))
+			var spots := Fleet.spots(state)
+			var edge: bool = spots.values().any(func(v): return v.mode == "edge")
+			var orbit: bool = spots.values().any(func(v): return v.mode == "orbit")
+			if edge or orbit:
+				var label := ("INGRESSO: %s" % ("DIRITTO" if st.get("ccw", true) else "OBLIQUO")) if edge else ("ORBITA: %s" % ("ANTIORARIA" if st.get("ccw", true) else "ORARIA"))
+				var dir := _action_button(label)
+				dir.pressed.connect(func(): st.ccw = not st.get("ccw", true); _refresh())
+			var auto := _action_button("SCHIERAMENTO AUTOMATICO")
+			auto.pressed.connect(func():
+				Fleet.auto_deploy(state)
+				_setup_done())
+		"designate":
+			actions.add_child(_rich(st.get("prompt", ""), 15))
+			actions.add_child(_rich("Designate: [b]%d / 5[/b] — clicca le unità imperiali sulla plancia." % st.picks.size(), 16))
+			for id in st.picks:
+				actions.add_child(UITheme.label("• " + Rules.ship(state, id).name, 15, UITheme.ACCENT_SOFT))
+			var go := UITheme.primary_button("SCATENA L'AMMUTINAMENTO")
+			go.custom_minimum_size = Vector2(0, 44)
+			go.disabled = st.picks.is_empty()
+			go.pressed.connect(func():
+				var err := ScenMutiny.confirm_picks(state)
+				if err != "": _toast(err, true)
+				_setup_done())
+			actions.add_child(go)
+
+func _build_shop(st: Dictionary) -> void:
+	if st.get("note", "") != "": actions.add_child(_rich("[color=#9aa7c2]%s[/color]" % st.note, 14))
+	var unlimited: bool = float(st.budget) > 5000.0
+	var spent := Fleet.cart_cost(st)
+	var left := float(st.budget) - spent
+	var budget_txt := "Spesi [b]%s[/b] · restano [b]%s[/b]" % [Fleet.money_text(spent, st.currency), Fleet.money_text(left, st.currency)]
+	if unlimited: budget_txt = "Navi scelte: [b]%d / %d[/b]" % [Fleet.cart_ships(st), int(st.max_ships)]
+	actions.add_child(_rich(budget_txt, 17))
+	for item in st.items:
+		var row := HBoxContainer.new()
+		row.add_theme_constant_override("separation", 6)
+		var info := ""
+		if Fleet.is_ship(item):
+			var tdef: Dictionary = ShipTypes.TYPES[item]
+			info = " [color=#9aa7c2]%s · carb. %s · stiva %s[/color]" % [ShipTypes.strength_label(item), "∞" if int(tdef.fuel) < 0 else str(tdef.fuel), "∞" if int(tdef.cargo) > 1000 else str(tdef.cargo)]
+		var price_txt := "" if unlimited else Fleet.money_text(Fleet.price(st.currency, item), st.currency)
+		var lbl := _rich("[b]%s[/b]%s\n[color=#ff9a5c]%s[/color]" % [Fleet.item_name(item), info, price_txt], 14)
+		lbl.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		row.add_child(lbl)
+		var minus := Button.new(); minus.text = "−"; minus.custom_minimum_size = Vector2(32, 32)
+		minus.disabled = int(st.cart.get(item, 0)) == 0
+		minus.pressed.connect(func(): Fleet.remove(state, item); _refresh())
+		row.add_child(minus)
+		var cnt := UITheme.label(str(int(st.cart.get(item, 0))), 18, UITheme.TEXT, UITheme.mono)
+		cnt.custom_minimum_size = Vector2(26, 0)
+		cnt.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+		row.add_child(cnt)
+		var plus := Button.new(); plus.text = "+"; plus.custom_minimum_size = Vector2(32, 32)
+		var why := Fleet.can_add(state, item)
+		plus.disabled = why != ""
+		plus.tooltip_text = why
+		plus.pressed.connect(func():
+			var e := Fleet.add(state, item)
+			if e != "": _toast(e, true)
+			_refresh())
+		row.add_child(plus)
+		actions.add_child(row)
+	var ok := UITheme.primary_button("CONFERMA ACQUISTI")
+	ok.custom_minimum_size = Vector2(0, 46)
+	ok.pressed.connect(func():
+		var err := Fleet.confirm_shop(state)
+		if err != "": _toast(err, true)
+		else: _setup_done())
+	actions.add_child(ok)
+	if Scenarios.can_cancel_shop(state):
+		var cancel := _action_button("CHIUDI IL CANTIERE")
+		cancel.pressed.connect(func(): Scenarios.cancel_shop(state); _refresh())
 
 func _build_astrogation_actions(s: Dictionary) -> void:
 	if s.landed != "":
@@ -1135,6 +1360,60 @@ func _build_astrogation_actions(s: Dictionary) -> void:
 	if not pr.get("grav", []).is_empty():
 		actions.add_child(_rich("Raccoglie %d spinta/e di gravità per il turno successivo." % pr.grav.size(), 14))
 
+## Comandi di scenario che non dipendono dalla nave selezionata.
+func _build_scenario_commands(me: String) -> void:
+	if state.scenario == "retribution" and me == "P1" and state.phase == "astrogation" and ScenRetribution.can_form(state):
+		var fb := _action_button("FORMA ORA LA FLOTTA DELLA LIBERTÀ")
+		fb.tooltip_text = "Le corvette ferme a Clandestine diventano una flotta del doppio della loro forza. Non arriveranno altre corvette."
+		fb.pressed.connect(func():
+			ScenRetribution.form_fleet(state)
+			_setup_done())
+	if state.scenario == "interplanetary-war" and ScenWar.can_buy_now(state, me) == "":
+		var sb := _action_button("CANTIERE · %s MCr disponibili" % Fleet.fmt_mcr(ScenWar.spendable(state, me)))
+		sb.pressed.connect(func():
+			var e := ScenWar.open_mid_shop(state, me)
+			if e != "": _toast(e, true)
+			_refresh())
+
+func _build_prospect_actions(s: Dictionary) -> void:
+	var cash := float(state.sd.mcr[s.owner])
+	actions.add_child(_rich("Cassa: [b]%s MCr[/b] · minerale a bordo [b]%.1f t[/b]%s" % [Fleet.fmt_mcr(cash), int(s.ore10) / 10.0, (" · %d schegge CT" % int(s.inv.get("ct_shard", 0))) if int(s.inv.get("ct_shard", 0)) > 0 else ""], 15))
+	if ScenProspecting.can_sell(state, s) == "":
+		var b := UITheme.primary_button("VENDI IL CARICO")
+		b.custom_minimum_size = Vector2(0, 42)
+		b.pressed.connect(func():
+			var n = state.log.size()
+			ScenProspecting.sell(state, s.id)
+			_after_step(n); _refresh())
+		actions.add_child(b)
+	for a in ScenProspecting.claim_actions(state, s):
+		var label: String = {"place_mine": "INSTALLA LA MINIERA AUTOMATICA", "place_guards": "METTI LE GUARDIE ROBOT", "collect": "CARICA IL MINERALE ESTRATTO"}[a]
+		var cb := _action_button(label)
+		cb.pressed.connect(func():
+			var n = state.log.size()
+			ScenProspecting.claim_action(state, s.id, a)
+			_after_step(n); _refresh())
+	if ScenProspecting.at_base(state, s):
+		actions.add_child(UITheme.caption("Acquisti in base"))
+		var row := HBoxContainer.new()
+		row.add_theme_constant_override("separation", 6)
+		for spec in [["+1 CARB.", 1], ["+5", 5], ["PIENO", 99]]:
+			var fb := Button.new(); fb.text = spec[0]; fb.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+			fb.disabled = ScenProspecting.can_buy(state, s, "fuel") != ""
+			fb.pressed.connect(func():
+				var n = state.log.size()
+				ScenProspecting.buy(state, s.id, "fuel", mini(int(spec[1]), int(s.max_fuel) - int(s.fuel)))
+				_after_step(n); _refresh())
+			row.add_child(fb)
+		actions.add_child(row)
+		for item in ScenProspecting.EQUIP:
+			var why := ScenProspecting.can_buy(state, s, item)
+			var eb := _action_button("%s · %d MCr" % [ShipTypes.ITEM_NAME[item].to_upper(), int(Fleet.price("mcr", item))], why == "", why)
+			eb.pressed.connect(func():
+				var n = state.log.size()
+				ScenProspecting.buy(state, s.id, item)
+				_after_step(n); _refresh())
+
 func _odds_panel(p: Dictionary) -> Control:
 	var box := _panel(Color("0c1a38"), UITheme.LINE_BRIGHT, 6, 10)
 	var v := VBoxContainer.new()
@@ -1168,7 +1447,9 @@ func _refresh_bottom() -> void:
 	primary.disabled = busy or not human or state.over or state.phase == "setup" or not state.pending_attack.is_empty()
 	var name: String = Rules.player(state, me).get("name", "")
 	match state.phase:
-		"setup": hint.text = "[b]%s[/b]: preparazione segreta dello scenario." % name
+		"setup":
+			primary.text = "CONFERMA ▸"
+			hint.text = "[b]%s[/b] · %s" % [name, {"shop": "scegli la flotta nel pannello a destra.", "deploy": "colloca le unità sugli esagoni evidenziati.", "choose": "fai la tua scelta nel pannello a destra.", "designate": "designa le unità ribelli sulla plancia."}.get(state.setup.get("step", ""), "preparazione segreta dello scenario.")]
 		"astrogation":
 			primary.text = "CONFERMA LE ROTTE ▸"
 			var pending = state.ships.filter(func(s): return s.owner == me and Rules.alive(s) and not s.get("dummy", false) and s.landed == "" and not Rules.is_disabled(state, s)).size()
@@ -1431,6 +1712,9 @@ Somma le forze degli attaccanti e dei bersagli (stesso esagono) e riduci il rapp
 [b][color=#ff9a5c]Ordigni e pericoli[/color][/b]
 Mine (10 t) e testate (20 t) ereditano il vettore della nave, che deve cambiare rotta; i siluri (20 t, solo navi da guerra) accelerano di 1 o 2 al lancio. Durano cinque turni. Attraversare asteroidi a velocità superiore a 1 richiede un tiro per esagono.
 
+[b][color=#ff9a5c]Scenari con acquisti[/color][/b]
+In Nova, Retribution, The Fleet Mutiny, Interplanetary War e Prospecting la partita comincia con la preparazione: scelte nel pannello a destra, acquisti con i pulsanti + e −, poi lo schieramento cliccando gli esagoni evidenziati in verde (il pulsante cambia il verso delle orbite). Nella guerra interplanetaria il cantiere si apre durante l'astrogazione o il rifornimento; in Fleet Mutiny, in fase di combattimento, una nave in orbita sopra un lato della Terra può sopprimerlo.
+
 [b][color=#ff9a5c]Comandi[/color][/b]
 Rotella: zoom · trascina: sposta la plancia · clic destro: annulla la selezione · Tab: nave successiva · barra spaziatrice: deriva · Invio: conferma la fase · F: adatta la plancia."""
 
@@ -1574,6 +1858,24 @@ func _build_menu_detail() -> void:
 		lt.button_pressed = menu_options.liner_terra
 		lt.toggled.connect(func(on): menu_options.liner_terra = on)
 		menu_detail.add_child(lt)
+	if menu_scenario == "nova":
+		var al := CheckBox.new()
+		al.text = "EastBloc e WestBloc si concedono le basi a vicenda (rifornimenti e niente difese fra blocchi)"
+		al.button_pressed = menu_options.nova_allied
+		al.toggled.connect(func(on): menu_options.nova_allied = on)
+		menu_detail.add_child(al)
+	if menu_scenario == "prospecting":
+		var row := HBoxContainer.new()
+		row.add_theme_constant_override("separation", 8)
+		row.add_child(UITheme.label("Durata della corsa:", 16))
+		for days in [60, 120, 180]:
+			var b := Button.new()
+			b.text = "%d GIORNI" % days
+			b.toggle_mode = true
+			b.button_pressed = int(menu_options.length) == days
+			b.pressed.connect(func(): menu_options.length = days; _build_menu_detail())
+			row.add_child(b)
+		menu_detail.add_child(row)
 	var start := UITheme.primary_button("INIZIA LA MISSIONE ▸")
 	start.custom_minimum_size = Vector2(0, 52)
 	start.add_theme_font_size_override("font_size", 20)
@@ -1593,7 +1895,8 @@ func _start_from_menu() -> void:
 	if seats.size() < int(info.min):
 		_toast("Servono almeno %d giocatori" % info.min, true)
 		return
-	var st := Scenarios.create(menu_scenario, seats, {"sol_classic": menu_options.sol_classic, "liner_terra": menu_options.liner_terra})
+	var st := Scenarios.create(menu_scenario, seats, {"sol_classic": menu_options.sol_classic, "liner_terra": menu_options.liner_terra,
+		"nova_allied": menu_options.nova_allied, "length": int(menu_options.length)})
 	_start_game(st)
 
 # ================================================================ tastiera

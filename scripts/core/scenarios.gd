@@ -329,7 +329,7 @@ static func shop_done(state: Dictionary, pid: String, cart: Dictionary, queue: A
 static func cancel_shop(state: Dictionary) -> void:
 	if state.scenario == "interplanetary-war" and state.sd.get("mid", false):
 		state.sd.mid = false
-		state.phase = "resupply"
+		state.phase = state.sd.get("mid_phase", "resupply")
 		state.setup = {}
 
 static func can_cancel_shop(state: Dictionary) -> bool:

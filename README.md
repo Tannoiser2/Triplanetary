@@ -11,7 +11,13 @@ Versione digitale per uso personale di *Triplanetary* (Game Designers' Workshop,
 - **Combattimento**: attacchi di gruppo contro navi nello stesso esagono, colonne 1:2–4:1 arrotondate a favore del difensore, distanza minima dalla rotta, velocità relativa, eroismo, contrattacco prima dell'applicazione dei danni, disabilitazione cumulativa con distruzione a 6 turni, difese planetarie, speronamento.
 - **Ordigni e pericoli**: mine, siluri (accelerazione 1–2 al lancio), testate nucleari, durata 5 turni, detonazioni contro navi, corpi, asteroidi e altri ordigni; asteroidi e asteroidi speciali di Clandestine.
 - **Basi, rifornimento e rilevamento**: rifornimento a terra o in orbita sopra la base, manutenzione, carico degli ordigni, ispezione, trasferimenti con rotta accoppiata, resa, rilevatori a 3/5 esagoni con informazione nascosta.
-- **Scenari giocabili**: *Grand Tour* (2–6 piloti), *Escape*, *Lateral 7*. Gli altri cinque scenari del manuale sono nel catalogo ma non ancora giocabili.
+- **Tutti gli otto scenari del manuale**:
+  - *Grand Tour* (2–6 piloti), *Escape*, *Lateral 7*;
+  - *Nova* (3 giocatori): spartizione di Terra e Luna, colonie tirate a sorte, flotte da 50 punti di forza, quattro corsari alieni con bombe Nova;
+  - *Retribution*: dieci corvette ribelli una alla volta, Terran Security Patrol, Flotta della Libertà al doppio della forza;
+  - *The Fleet Mutiny*: dodici navi e due basi orbitali imperiali, cinque unità designate che si ammutinano, soppressione dei lati della Terra, cattura delle basi;
+  - *Interplanetary War*: flotte in MegaCrediti, depositi di ordigni, testate nucleari, produzione delle basi e crediti da trasportare con navi commerciali;
+  - *Prospecting* (2–6 cercatori): prospezione a velocità 1, minerale e schegge CT, miniere automatiche, guardie robot, mercati di Ceres e Luna.
 - **Avversario IA**: pianifica le rotte con una ricerca A* sugli stati vettoriali (posizione, velocità, gravità in sospeso), gestisce carburante e rifornimenti, intercetta, combatte, ispeziona. Non sbircia le informazioni nascoste.
 - **Hot-seat** con schermata di passaggio negli scenari con informazioni nascoste, salvataggio automatico, slot manuale e salvataggio portabile negli appunti.
 
@@ -33,7 +39,7 @@ La guida completa è nel pulsante **GUIDA** del gioco.
 
 ```bash
 godot --path . --editor                                  # editor
-godot --headless --path . --script tests/run_tests.gd    # 68 controlli del motore e dell'IA
+godot --headless --path . --script tests/run_tests.gd    # 95 controlli del motore e dell'IA
 godot --headless --path . --export-release Web docs/index.html
 ```
 
