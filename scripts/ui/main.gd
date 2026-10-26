@@ -1,0 +1,1614 @@
+extends Control
+## Controller della partita: menu, HUD, flusso delle fasi, IA, animazioni e salvataggi.
+
+const TOP_H := 64
+const SIDE_W := 356
+const BOTTOM_H := 66
+const PHASE_ORDER := ["astrogation", "ordnance", "movement", "combat", "resupply"]
+const PHASE_SHORT := {"astrogation": "ASTROGAZIONE", "ordnance": "ORDIGNI", "movement": "MOVIMENTO", "combat": "COMBATTIMENTO", "resupply": "RIFORNIMENTO"}
+
+var state: Dictionary = {}
+var board: Board
+var sel := ""
+var mode := ""
+var torpedo_burns: Array = []
+var attackers: Array = []
+var targets: Array = []
+var busy := false
+var shown_for := ""
+var anim_speed := 1.0
+var hover_hex := Vector2i(9999, 9999)
+
+# HUD
+var hud: Control
+var top_scenario: Label
+var top_day: Label
+var phase_pills: Array = []
+var player_chip: PanelContainer
+var player_dot: Panel
+var player_label: Label
+var fleet_box: VBoxContainer
+var detail_box: VBoxContainer
+var actions: VBoxContainer
+var objective_box: VBoxContainer
+var hint: RichTextLabel
+var primary: Button
+var log_text: RichTextLabel
+var log_panel: PanelContainer
+var tip: PanelContainer
+var tip_text: RichTextLabel
+var toast: Label
+var toast_tween: Tween
+var thinking: Label
+var detect_toggle: Button
+
+# schermate
+var menu: Control
+var privacy: Control
+var dialog: Control
+var victory: Control
+var help: Control
+
+var menu_scenario := "grand-tour"
+var menu_seats: Array = []
+var menu_detail: VBoxContainer
+var menu_options := {"sol_classic": false, "liner_terra": false}
+
+func _ready() -> void:
+	theme = UITheme.theme()
+	UITheme.load_fonts()
+	set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	board = Board.new()
+	board.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	board.hex_clicked.connect(_on_hex_clicked)
+	board.hex_hovered.connect(_on_hex_hovered)
+	add_child(board)
+	_build_hud()
+	_build_menu()
+	_build_help()
+	get_viewport().size_changed.connect(_layout)
+	_layout()
+	_show_menu()
+
+# ================================================================ HUD
+
+func _panel(bg := UITheme.PANEL, border := UITheme.LINE, radius := 8, pad := 12) -> PanelContainer:
+	var p := PanelContainer.new()
+	p.add_theme_stylebox_override("panel", UITheme.box(bg, border, radius, 1, pad))
+	return p
+
+func _build_hud() -> void:
+	hud = Control.new()
+	hud.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	hud.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	add_child(hud)
+	# --- barra superiore
+	var top := _panel(Color("070f22ee"), UITheme.LINE, 0, 10)
+	top.name = "Top"
+	top.set_anchors_preset(Control.PRESET_TOP_WIDE)
+	top.offset_bottom = TOP_H
+	hud.add_child(top)
+	var row := HBoxContainer.new()
+	row.add_theme_constant_override("separation", 14)
+	top.add_child(row)
+	var logo := UITheme.label("TRIPLANETARY", 22, UITheme.PHOSPHOR, UITheme.display)
+	logo.add_theme_color_override("font_outline_color", Color("c2321f"))
+	logo.add_theme_constant_override("outline_size", 3)
+	row.add_child(logo)
+	top_scenario = UITheme.label("", 16, UITheme.TEXT_DIM, UITheme.body_bold)
+	top_scenario.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
+	row.add_child(top_scenario)
+	var sp := Control.new(); sp.size_flags_horizontal = Control.SIZE_EXPAND_FILL; row.add_child(sp)
+	top_day = UITheme.label("GIORNO 1", 22, UITheme.TEXT, UITheme.display)
+	top_day.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
+	row.add_child(top_day)
+	var pills := HBoxContainer.new()
+	pills.add_theme_constant_override("separation", 3)
+	row.add_child(pills)
+	for i in range(PHASE_ORDER.size()):
+		var pill := PanelContainer.new()
+		var l := UITheme.label(PHASE_SHORT[PHASE_ORDER[i]], 12, UITheme.TEXT_FAINT, UITheme.body_bold)
+		pill.add_child(l)
+		pills.add_child(pill)
+		phase_pills.append(pill)
+	var sp2 := Control.new(); sp2.size_flags_horizontal = Control.SIZE_EXPAND_FILL; row.add_child(sp2)
+	player_chip = _panel(Color("0c1a38"), UITheme.LINE_BRIGHT, 20, 8)
+	var chip_row := HBoxContainer.new()
+	chip_row.add_theme_constant_override("separation", 8)
+	player_chip.add_child(chip_row)
+	player_dot = Panel.new()
+	player_dot.custom_minimum_size = Vector2(16, 16)
+	player_dot.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+	chip_row.add_child(player_dot)
+	player_label = UITheme.label("", 17, UITheme.TEXT, UITheme.body_bold)
+	chip_row.add_child(player_label)
+	row.add_child(player_chip)
+	detect_toggle = _icon_button("RADAR", "Mostra il raggio dei rilevatori delle basi (5 esagoni)")
+	detect_toggle.toggle_mode = true
+	detect_toggle.toggled.connect(func(on): board.show_detection = on; board.queue_redraw())
+	row.add_child(detect_toggle)
+	var guide := _icon_button("GUIDA", "Regole e comandi")
+	guide.pressed.connect(func(): help.visible = true)
+	row.add_child(guide)
+	var menu_btn := _icon_button("MENU", "Salva, carica, nuova partita")
+	menu_btn.pressed.connect(_open_game_menu)
+	row.add_child(menu_btn)
+	# --- pannello laterale
+	var side := _panel(Color("08122aee"), UITheme.LINE, 10, 14)
+	side.name = "Side"
+	hud.add_child(side)
+	var side_scroll := ScrollContainer.new()
+	side_scroll.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
+	side.add_child(side_scroll)
+	var side_v := VBoxContainer.new()
+	side_v.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	side_v.add_theme_constant_override("separation", 10)
+	side_scroll.add_child(side_v)
+	objective_box = VBoxContainer.new()
+	objective_box.add_theme_constant_override("separation", 4)
+	side_v.add_child(objective_box)
+	side_v.add_child(UITheme.caption("Flotta"))
+	fleet_box = VBoxContainer.new()
+	fleet_box.add_theme_constant_override("separation", 5)
+	side_v.add_child(fleet_box)
+	detail_box = VBoxContainer.new()
+	detail_box.add_theme_constant_override("separation", 6)
+	side_v.add_child(detail_box)
+	actions = VBoxContainer.new()
+	actions.add_theme_constant_override("separation", 6)
+	side_v.add_child(actions)
+	# --- barra inferiore
+	var bottom := _panel(Color("070f22ee"), UITheme.LINE, 0, 12)
+	bottom.name = "Bottom"
+	hud.add_child(bottom)
+	var brow := HBoxContainer.new()
+	brow.add_theme_constant_override("separation", 12)
+	bottom.add_child(brow)
+	var zoom_box := HBoxContainer.new()
+	zoom_box.add_theme_constant_override("separation", 4)
+	for spec in [["−", "Riduci", func(): board.zoom_by(1.0 / 1.25, board.size * 0.5)], ["+", "Ingrandisci", func(): board.zoom_by(1.25, board.size * 0.5)], ["⌂", "Tutta la plancia", func(): board.fit()], ["◎", "Centra la nave selezionata", _center_selected]]:
+		var zb := Button.new(); zb.text = spec[0]; zb.tooltip_text = spec[1]; zb.custom_minimum_size = Vector2(38, 38)
+		zb.add_theme_font_size_override("font_size", 20)
+		zb.pressed.connect(spec[2])
+		zoom_box.add_child(zb)
+	brow.add_child(zoom_box)
+	var log_btn := Button.new(); log_btn.text = "REGISTRO"; log_btn.toggle_mode = true; log_btn.button_pressed = true
+	log_btn.toggled.connect(func(on): log_panel.visible = on)
+	brow.add_child(log_btn)
+	hint = RichTextLabel.new()
+	hint.bbcode_enabled = true
+	hint.fit_content = true
+	hint.scroll_active = false
+	hint.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	hint.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+	hint.add_theme_font_size_override("normal_font_size", 17)
+	hint.add_theme_font_size_override("bold_font_size", 17)
+	brow.add_child(hint)
+	primary = UITheme.primary_button("CONFERMA ▸")
+	primary.custom_minimum_size = Vector2(250, 42)
+	primary.pressed.connect(_on_primary)
+	brow.add_child(primary)
+	# --- registro
+	log_panel = _panel(Color("070f22dd"), UITheme.LINE, 8, 10)
+	log_panel.name = "Log"
+	hud.add_child(log_panel)
+	var lv := VBoxContainer.new()
+	log_panel.add_child(lv)
+	lv.add_child(UITheme.caption("Registro di bordo"))
+	log_text = RichTextLabel.new()
+	log_text.bbcode_enabled = true
+	log_text.scroll_following = true
+	log_text.size_flags_vertical = Control.SIZE_EXPAND_FILL
+	log_text.add_theme_font_size_override("normal_font_size", 15)
+	log_text.add_theme_font_size_override("bold_font_size", 15)
+	lv.add_child(log_text)
+	# --- suggerimento al passaggio del mouse
+	tip = _panel(Color("08122af4"), UITheme.CYAN, 6, 8)
+	tip.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	tip.visible = false
+	tip_text = RichTextLabel.new()
+	tip_text.bbcode_enabled = true
+	tip_text.fit_content = true
+	tip_text.custom_minimum_size = Vector2(250, 0)
+	tip_text.scroll_active = false
+	tip_text.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	tip_text.add_theme_font_size_override("normal_font_size", 15)
+	tip_text.add_theme_font_size_override("bold_font_size", 15)
+	tip.add_child(tip_text)
+	hud.add_child(tip)
+	# --- messaggi
+	toast = UITheme.label("", 22, UITheme.TEXT, UITheme.display)
+	toast.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	toast.add_theme_color_override("font_outline_color", Color("020610"))
+	toast.add_theme_constant_override("outline_size", 8)
+	toast.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	toast.modulate.a = 0.0
+	hud.add_child(toast)
+	thinking = UITheme.label("", 18, UITheme.CYAN, UITheme.body_bold)
+	thinking.add_theme_color_override("font_outline_color", Color("020610"))
+	thinking.add_theme_constant_override("outline_size", 6)
+	thinking.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	hud.add_child(thinking)
+
+func _icon_button(text: String, tip_text_s: String) -> Button:
+	var b := Button.new()
+	b.text = text
+	b.tooltip_text = tip_text_s
+	b.add_theme_font_size_override("font_size", 14)
+	return b
+
+func _layout() -> void:
+	var vs := get_viewport_rect().size
+	var side_w := SIDE_W if vs.x > 1000 else 300
+	var side: Control = hud.get_node("Side")
+	side.position = Vector2(vs.x - side_w - 10, TOP_H + 10)
+	side.size = Vector2(side_w, vs.y - TOP_H - BOTTOM_H - 20)
+	var bottom: Control = hud.get_node("Bottom")
+	bottom.position = Vector2(0, vs.y - BOTTOM_H)
+	bottom.size = Vector2(vs.x, BOTTOM_H)
+	log_panel.position = Vector2(10, vs.y - BOTTOM_H - 150)
+	log_panel.size = Vector2(minf(440, vs.x * 0.34), 140)
+	board.safe_rect = Rect2(10, TOP_H + 6, vs.x - side_w - 30, vs.y - TOP_H - BOTTOM_H - 12)
+	toast.position = Vector2(0, TOP_H + 22)
+	toast.size = Vector2(vs.x - side_w, 40)
+	thinking.position = Vector2(16, TOP_H + 14)
+	thinking.size = Vector2(600, 30)
+
+# ================================================================ avvio partita
+
+func _start_game(st: Dictionary) -> void:
+	state = st
+	sel = ""
+	mode = ""
+	attackers = []; targets = []
+	shown_for = ""
+	board.set_state(state)
+	board.selected = ""
+	board.fit()
+	log_text.clear()
+	for e in state.log: _append_log(e)
+	menu.visible = false
+	hud.visible = true
+	board.visible = true
+	_refresh()
+	_flow()
+
+func _append_log(e: Dictionary) -> void:
+	var col := "#b9c4dc"
+	match e.get("kind", "info"):
+		"combat": col = "#ff9a6a"
+		"loss": col = "#ff6070"
+		"victory": col = "#5be38f"
+		"detect": col = "#7fe0ee"
+		"supply": col = "#d6e48a"
+		"hazard": col = "#ffcf5a"
+		"ordnance": col = "#ffb070"
+		"move": col = "#9fb3d8"
+	var who: String = e.get("player", "")
+	var dot := ""
+	if who != "":
+		dot = "[color=%s]●[/color] " % UITheme.player_color(state, who).to_html(false)
+	log_text.append_text("[color=#5f6f92]G%d[/color] %s[color=%s]%s[/color]\n" % [int(e.get("turn", 0)), dot, col, e.text])
+
+# ================================================================ flusso delle fasi
+
+func _human_seat() -> String:
+	for p in state.players:
+		if p.type == "human": return p.id
+	return ""
+
+func _active_player() -> String:
+	if state.is_empty(): return ""
+	if not state.pending_attack.is_empty(): return state.pending_attack.defender
+	if state.phase == "setup": return state.setup.get("player", "P1")
+	return Rules.current_player(state)
+
+func _is_human(pid: String) -> bool:
+	return Rules.player(state, pid).get("type", "human") == "human"
+
+func _needs_privacy() -> bool:
+	if not state.rules.get("hidden", false) and state.scenario != "escape": return false
+	var humans = state.players.filter(func(p): return p.type == "human")
+	return humans.size() >= 2
+
+## Ciclo principale: esegue i passi automatici (IA, fasi senza scelte) finché
+## serve un intervento del giocatore umano.
+func _flow() -> void:
+	if busy: return
+	busy = true
+	var guard := 0
+	while not state.over and guard < 400:
+		guard += 1
+		var who := _active_player()
+		if not _is_human(who):
+			board.viewer = _human_seat() if _human_seat() != "" else who
+			thinking.text = "%s sta pianificando…" % Rules.player(state, who).name
+			_refresh()
+			await get_tree().process_frame
+			await get_tree().process_frame
+			var before_phase: String = state.phase
+			var log_n: int = state.log.size()
+			AI.play_step(state)
+			thinking.text = ""
+			_after_step(log_n)
+			if before_phase == "ordnance" and state.phase == "combat" or state.phase == "combat" and not state.moves.is_empty() and before_phase == "ordnance":
+				pass
+			if state.get("moves", []).size() > 0 and before_phase == "ordnance":
+				await _animate_moves()
+			await get_tree().create_timer(0.12 / anim_speed).timeout
+			continue
+		# giocatore umano
+		if _needs_privacy() and shown_for != who:
+			await _show_privacy(who)
+		shown_for = who
+		board.viewer = who
+		_auto_select(who)
+		if _auto_skip():
+			var log_n2: int = state.log.size()
+			var ph: String = state.phase
+			Rules.end_phase(state)
+			_after_step(log_n2)
+			if ph == "ordnance": await _animate_moves()
+			continue
+		break
+	busy = false
+	_refresh()
+	if state.over: _show_victory()
+
+var _focus_key := ""
+
+## A inizio segmento seleziona la prima nave del giocatore e la inquadra.
+func _auto_select(who: String) -> void:
+	var key := "%d:%d:%s" % [int(state.turn), int(state.seg), state.phase]
+	if key == _focus_key: return
+	_focus_key = key
+	if state.phase == "setup" and state.scenario == "lateral-7":
+		board.center_on(SolarMap.body(Rules.map_of(state), "ceres").hex + Vector2i(8, 1), 17.0)
+		return
+	var cur := Rules.ship(state, sel)
+	if not cur.is_empty() and cur.owner == who and Rules.alive(cur): return
+	for s in state.ships:
+		if s.owner == who and Rules.alive(s) and not s.get("dummy", false) and not _finished(s):
+			sel = s.id
+			if state.phase == "astrogation":
+				board.center_on(s.pos if s.landed == "" else SolarMap.body(Rules.map_of(state), s.landed).hex, 26.0)
+			return
+
+func _after_step(log_from: int) -> void:
+	for i in range(log_from, state.log.size()): _append_log(state.log[i])
+	for f in state.get("fx", []): board.add_fx(f.kind, f.hex, 0.75 / anim_speed if state.phase == "combat" else 0.0)
+	Persistence.save_slot(state, "auto")
+
+func _animate_moves() -> void:
+	var moves: Array = state.get("moves", [])
+	if moves.is_empty(): return
+	board.anim_moves = {}
+	for m in moves:
+		board.anim_moves[m.id] = {"from": Board.world(m.from), "to": Board.world(m.to)}
+	board.anim_t = 0.0
+	var dur := 0.85 / anim_speed
+	var t := 0.0
+	while t < dur:
+		await get_tree().process_frame
+		t += get_process_delta_time()
+		board.anim_t = clampf(t / dur, 0.0, 1.0)
+		board.queue_redraw()
+	board.anim_t = 1.0
+	board.anim_moves = {}
+	state.moves = []
+	board.queue_redraw()
+
+## Vero se la fase corrente non offre scelte al giocatore umano.
+func _auto_skip() -> bool:
+	if not state.pending_attack.is_empty(): return false
+	var me := Rules.current_player(state)
+	match state.phase:
+		"setup": return false
+		"astrogation":
+			return not state.ships.any(func(s): return s.owner == me and Rules.alive(s) and not s.get("dummy", false) and (s.landed == "" or Rules.can_take_off(state, s)) and not _finished(s))
+		"ordnance":
+			if not state.rules.get("ordnance", true): return true
+			for s in state.ships:
+				if s.owner != me or not Rules.alive(s): continue
+				for k in ["mine", "torpedo", "nuke"]:
+					if int(s.inv.get(k, 0)) > 0 and Rules.can_launch(state, s, k) == "": return false
+			return true
+		"movement": return true
+		"combat":
+			if not state.rules.get("combat", true): return true
+			return _possible_attacks(me).is_empty()
+		"resupply":
+			return not _resupply_has_choices(me)
+	return false
+
+func _finished(s: Dictionary) -> bool:
+	return state.scenario == "grand-tour" and state.sd.finishers.has(s.id)
+
+func _possible_attacks(me: String) -> Array:
+	var out := []
+	var now := Rules.tick(state)
+	for a in state.ships:
+		if a.owner != me or not Rules.can_fire(state, a) or int(a.attacked_tick) == now: continue
+		for t in state.ships:
+			if Rules.can_be_attacked(state, me, t) and int(t.targeted_tick) != now:
+				var p := Rules.attack_preview(state, [a], [t])
+				if int(p.column) >= 0 and _hit_chance(p) > 0.0: out.append([a.id, t.id])
+	return out
+
+func _hit_chance(p: Dictionary) -> float:
+	var hit := 0.0
+	for res in p.chances:
+		if res != "-": hit += float(p.chances[res]) / 6.0
+	return hit
+
+func _resupply_has_choices(me: String) -> bool:
+	for s in state.ships:
+		if s.owner != me or not Rules.alive(s) or s.get("dummy", false): continue
+		for k in ["mine", "torpedo", "nuke"]:
+			if Rules.can_load(state, s, k) == "": return true
+		if _matched_actions(s).size() > 0: return true
+	return false
+
+func _matched_actions(s: Dictionary) -> Array:
+	var out := []
+	for t in state.ships:
+		if t.id == s.id or not Rules.matched(s, t): continue
+		if state.scenario == "escape" and s.owner == "P2" and t.owner == "P1":
+			out.append({"label": "ISPEZIONA %s" % t.name.to_upper(), "call": func(): return Scenarios.inspect(state, s.id, t.id)})
+		if state.scenario == "lateral-7" and state.sd.passengers == t.id and s.owner != t.owner:
+			out.append({"label": "PRENDI I PASSEGGERI", "call": func(): return Scenarios.transfer_passengers(state, t.id, s.id)})
+		if state.scenario == "lateral-7" and state.sd.passengers == s.id and t.owner == s.owner:
+			out.append({"label": "TRASFERISCI PASSEGGERI A %s" % t.name.to_upper(), "call": func(): return Scenarios.transfer_passengers(state, s.id, t.id)})
+		if t.owner == s.owner and not s.infinite_fuel and int(s.fuel) > 0 and int(t.fuel) < int(t.max_fuel):
+			out.append({"label": "CEDI 1 CARBURANTE A %s" % t.name.to_upper(), "call": func(): return Rules.transfer_fuel(state, s.id, t.id, 1)})
+	return out
+
+func _on_primary() -> void:
+	if busy or state.is_empty() or state.over: return
+	if state.phase == "setup": return
+	if not state.pending_attack.is_empty(): return
+	if state.phase == "combat" and not attackers.is_empty() and not targets.is_empty():
+		_fire()
+		return
+	var log_n: int = state.log.size()
+	var ph: String = state.phase
+	mode = ""
+	attackers = []; targets = []
+	Rules.end_phase(state)
+	_after_step(log_n)
+	busy = true
+	if ph == "ordnance": await _animate_moves()
+	busy = false
+	_refresh()
+	_flow()
+
+# ================================================================ interazione con la plancia
+
+func _on_hex_clicked(h: Vector2i, button: int) -> void:
+	if busy or state.is_empty() or state.over: return
+	if button == MOUSE_BUTTON_RIGHT:
+		sel = ""; mode = ""; attackers = []; targets = []
+		_refresh()
+		return
+	var me := _active_player()
+	if not _is_human(me): return
+	match state.phase:
+		"setup": _click_setup(h)
+		"astrogation": _click_astrogation(h)
+		"ordnance": _click_ordnance(h)
+		"combat": _click_combat(h)
+		_: _select_at(h)
+	_refresh()
+
+func _ships_at(h: Vector2i) -> Array:
+	var out := []
+	for s in state.ships:
+		if not Rules.alive(s): continue
+		if s.pos == h and s.landed == "": out.append(s)
+	for s in state.ships:
+		if Rules.alive(s) and s.landed != "" and s.pos == h: out.append(s)
+	return out
+
+func _select_at(h: Vector2i) -> bool:
+	var here := _ships_at(h).filter(func(s): return s.owner == _active_player() and not s.get("dummy", false))
+	if here.is_empty(): return false
+	# clic ripetuti sullo stesso esagono scorrono la pila
+	var idx := 0
+	for i in range(here.size()):
+		if here[i].id == sel: idx = (i + 1) % here.size()
+	sel = here[idx].id
+	return true
+
+func _click_setup(h: Vector2i) -> void:
+	if state.scenario == "escape":
+		for s in _ships_at(h):
+			if s.owner == "P1":
+				var err := Scenarios.choose_fugitive(state, s.id)
+				if err == "":
+					_toast("Fuggitivi a bordo del %s" % s.name)
+					_after_step(state.log.size() - 1)
+					_flow()
+				return
+		return
+	if state.scenario == "lateral-7":
+		var err2 := Scenarios.place(state, h)
+		if err2 != "": _toast(err2, true)
+		else:
+			_after_step(state.log.size())
+			if state.phase != "setup" or _active_player() != shown_for: _flow()
+
+func _click_astrogation(h: Vector2i) -> void:
+	var s := Rules.ship(state, sel)
+	# Lateral 7: scelta dei falsi bersagli da ritirare
+	if not s.is_empty() and _needs_dummy_choice(s):
+		for d in _ships_at(h):
+			if d.get("dummy", false) and d.owner == s.owner:
+				var plot: Dictionary = state.plots.get(s.id, {}).duplicate(true)
+				var list: Array = plot.get("dummies", [])
+				if list.has(d.id): list.erase(d.id)
+				elif list.size() < 3: list.append(d.id)
+				plot.dummies = list
+				state.plots[s.id] = plot
+				return
+	if not s.is_empty() and Rules.can_plot(state, s):
+		for ch in _choices(s):
+			if ch.hex == h:
+				var plot2: Dictionary = state.plots.get(s.id, {}).duplicate(true)
+				var burns: Array = ch.burns
+				if plot2.get("burns", []) == burns and not burns.is_empty(): burns = []
+				plot2.burns = burns
+				plot2.erase("land"); plot2.erase("takeoff")
+				var err := Rules.set_plot(state, s.id, plot2)
+				if err != "": _toast(err, true)
+				return
+	_select_at(h)
+
+func _click_ordnance(h: Vector2i) -> void:
+	var s := Rules.ship(state, sel)
+	if mode == "torpedo" and not s.is_empty():
+		for ch in _torpedo_choices(s):
+			if ch.hex == h:
+				var err := Rules.launch(state, s.id, "torpedo", ch.burns)
+				if err != "": _toast(err, true)
+				else:
+					_append_log(state.log[-1])
+					mode = ""
+				return
+	_select_at(h)
+
+func _click_combat(h: Vector2i) -> void:
+	var me := Rules.current_player(state)
+	var here := _ships_at(h)
+	var own := here.filter(func(s): return s.owner == me and Rules.can_fire(state, s) and int(s.attacked_tick) != Rules.tick(state))
+	var foes := here.filter(func(s): return Rules.can_be_attacked(state, me, s) and int(s.targeted_tick) != Rules.tick(state))
+	if not foes.is_empty():
+		# i bersagli devono stare nello stesso esagono
+		if not targets.is_empty() and Rules.ship(state, targets[0]).pos != h: targets = []
+		var all_in := foes.all(func(f): return targets.has(f.id))
+		if all_in: targets = []
+		else:
+			# aggiunge una nave alla volta
+			for f in foes:
+				if not targets.has(f.id): targets.append(f.id); break
+		if attackers.is_empty() and not Rules.ship(state, sel).is_empty() and own.is_empty():
+			var cur := Rules.ship(state, sel)
+			if cur.owner == me and Rules.can_fire(state, cur): attackers = [sel]
+		return
+	if not own.is_empty():
+		for o in own:
+			if attackers.has(o.id): attackers.erase(o.id)
+			else: attackers.append(o.id); sel = o.id
+			break
+		return
+	_select_at(h)
+
+func _on_hex_hovered(h: Vector2i) -> void:
+	hover_hex = h
+	_update_tip()
+	if state.phase == "astrogation" or mode == "torpedo": _refresh_overlay()
+
+func _update_tip() -> void:
+	if state.is_empty() or menu.visible:
+		tip.visible = false
+		return
+	var map := Rules.map_of(state)
+	if not map.cells.has(hover_hex):
+		tip.visible = false
+		return
+	var lines: Array = []
+	if map.body_at.has(hover_hex):
+		var b: Dictionary = map.body_at[hover_hex]
+		var gtxt = {"full": "gravità piena", "weak": "gravità debole", "sol": "stella", "none": "asteroide-base"}[b.gravity]
+		lines.append("[b]%s[/b] · %s" % [b.name.to_upper(), gtxt])
+		var bases = state.bases.filter(func(x): return x.body == b.id and x.active)
+		if not bases.is_empty():
+			var owner: String = bases[0].owner
+			var who: String = "uso libero" if owner == "all" else Rules.player(state, owner).get("name", owner)
+			var extra := ""
+			if not bases[0].get("fuel", true): extra = " · niente carburante"
+			lines.append("%d base/i · %s%s" % [bases.size(), who, extra])
+	if map.gravity.has(hover_hex):
+		var names := {}
+		var weak := false
+		for g in map.gravity[hover_hex]:
+			names[SolarMap.body(map, g.body).name] = true
+			if g.weak: weak = true
+		lines.append("Gravità di %s%s · %d freccia/e" % [", ".join(names.keys()), " (debole)" if weak else "", map.gravity[hover_hex].size()])
+	if state.special.has(hover_hex): lines.append("[color=#8fb3ff]Asteroidi speciali di Clandestine[/color]")
+	elif state.asteroids.has(hover_hex): lines.append("[color=#e0c080]Asteroidi[/color]: tiro di pericolo sopra velocità 1")
+	for s in _ships_at(hover_hex):
+		if s.get("dummy", false) and s.owner != board.viewer or board._concealed(s):
+			lines.append("[color=#a0a8bc]Pedina coperta[/color]")
+			continue
+		var col := UITheme.player_color(state, s.owner).to_html(false)
+		var st := "%s · %s · carb. %s · v=%d" % [ShipTypes.TYPES[s.type].name, ShipTypes.strength_label(s.type), "∞" if s.infinite_fuel else str(s.fuel), Hex.length(s.vel)]
+		if s.get("dummy", false): st = "falso bersaglio"
+		lines.append("[color=#%s]■[/color] [b]%s[/b]\n   %s" % [col, s.name, st])
+	for o in state.ordnance:
+		if o.pos == hover_hex: lines.append("%s di %s · %d turni" % [ShipTypes.ORDNANCE_NAME[o.kind], Rules.player(state, o.owner).name, Rules.ORDNANCE_LIFE - int(o.age)])
+	if lines.is_empty():
+		tip.visible = false
+		return
+	tip_text.text = "\n".join(lines)
+	tip.visible = true
+	var mp := get_viewport().get_mouse_position()
+	tip.reset_size()
+	var vs := get_viewport_rect().size
+	tip.position = Vector2(minf(mp.x + 18, vs.x - tip.size.x - 8), minf(mp.y + 18, vs.y - tip.size.y - 8))
+
+# ================================================================ scelte di spinta
+
+func _inertial(s: Dictionary) -> Dictionary:
+	var map := Rules.map_of(state)
+	return Rules.simulate(map, s.pos, s.vel, s.grav, Vector2i.ZERO, state.plots.get(s.id, {}).get("weak", false), state.asteroids, state.special, s.access_special)
+
+func _choices(s: Dictionary) -> Array:
+	if s.landed != "" or Rules.is_disabled(state, s) or s.get("locked", false): return []
+	var map := Rules.map_of(state)
+	var base_end: Vector2i = s.pos + s.vel + Rules.pending_sum(s)
+	var cur: Array = state.plots.get(s.id, {}).get("burns", [])
+	var out := []
+	var fuel_ok: bool = s.infinite_fuel or int(s.fuel) >= 1
+	var weak: bool = state.plots.get(s.id, {}).get("weak", false)
+	var add := func(burns: Array, kind: String) -> void:
+		var r := Rules.simulate(map, s.pos, s.vel, s.grav, Rules.burn_vector(burns), weak, state.asteroids, state.special, s.access_special)
+		out.append({"hex": s.pos + r.vel, "burns": burns, "kind": kind, "picked": cur == burns,
+			"danger": r.crash != "" or r.offmap or r.special, "hover": s.pos + r.vel == hover_hex})
+	add.call([], "drift")
+	if fuel_ok:
+		for d in range(6): add.call([d], "burn")
+	if cur.size() >= 1 and Rules.can_overload(state, s):
+		var first: int = int(cur[0])
+		for d in range(6):
+			if d == (first + 3) % 6: continue
+			var hex: Vector2i = base_end + Hex.DIRS[first] + Hex.DIRS[d]
+			if out.any(func(c): return c.hex == hex): continue
+			add.call([first, d], "overload")
+	return out
+
+func _torpedo_choices(s: Dictionary) -> Array:
+	var map := Rules.map_of(state)
+	var out := []
+	var seen := {}
+	for d1 in range(6):
+		for d2 in [-1, 0, 1, 2, 3, 4, 5]:
+			var burns: Array = [d1] if d2 < 0 else [d1, d2]
+			if d2 >= 0 and d2 == (d1 + 3) % 6: continue
+			var r := Rules.simulate(map, s.pos, s.vel, s.grav, Rules.burn_vector(burns), false, [], [], true)
+			var hex: Vector2i = s.pos + r.vel
+			if seen.has(hex) or hex == s.pos + s.vel + Rules.pending_sum(s): continue
+			seen[hex] = true
+			out.append({"hex": hex, "burns": burns, "kind": "burn" if burns.size() == 1 else "overload", "picked": false, "hover": hex == hover_hex})
+	return out
+
+func _needs_dummy_choice(s: Dictionary) -> bool:
+	if state.scenario != "lateral-7" or not s.get("first_burn_pending", false): return false
+	if state.plots.get(s.id, {}).get("burns", []).is_empty(): return false
+	return state.ships.any(func(d): return d.get("dummy", false) and d.owner == s.owner and Rules.alive(d))
+
+# ================================================================ aggiornamento dell'interfaccia
+
+func _refresh() -> void:
+	if state.is_empty(): return
+	board.state = state
+	board.selected = sel
+	_refresh_top()
+	_refresh_side()
+	_refresh_bottom()
+	_refresh_overlay()
+
+func _refresh_overlay() -> void:
+	var ov := {}
+	var me := _active_player()
+	var human := _is_human(me)
+	if state.phase == "astrogation" and human:
+		var preds := {}
+		for s in state.ships:
+			if s.owner != me or not Rules.alive(s) or s.get("dummy", false): continue
+			if s.landed != "" and not state.plots.get(s.id, {}).get("takeoff", false): continue
+			preds[s.id] = Rules.predict(state, s, state.plots.get(s.id, {}))
+		ov.predictions = preds
+		var s2 := Rules.ship(state, sel)
+		if not s2.is_empty() and s2.owner == me: ov.choices = _choices(s2)
+		if not s2.is_empty() and _needs_dummy_choice(s2):
+			ov.mark_hexes = state.ships.filter(func(d): return d.get("dummy", false) and d.owner == me and Rules.alive(d) and state.plots.get(s2.id, {}).get("dummies", []).has(d.id)).map(func(d): return d.pos)
+	elif state.phase == "ordnance" and human and mode == "torpedo":
+		var s3 := Rules.ship(state, sel)
+		if not s3.is_empty(): ov.choices = _torpedo_choices(s3)
+	elif state.phase == "combat" and human and state.pending_attack.is_empty():
+		ov.attackers = attackers.duplicate()
+		ov.targets_sel = targets.duplicate()
+		var tg := []
+		for pair in _possible_attacks(me):
+			if not tg.has(pair[1]): tg.append(pair[1])
+		ov.targetable = tg
+	elif state.phase == "setup" and human and state.scenario == "lateral-7":
+		ov.place_hexes = state.asteroids.filter(func(h): return Scenarios.can_place(state, h))
+		ov.pulse = true
+	board.overlay = ov
+	board.queue_redraw()
+
+func _refresh_top() -> void:
+	var info := Scenarios.info(state.scenario)
+	top_scenario.text = "%s%s" % [info.title.to_upper(), (" · " + info.year) if info.year != "" else ""]
+	top_day.text = "GIORNO %d" % int(state.turn)
+	var cur := PHASE_ORDER.find(state.phase)
+	for i in range(phase_pills.size()):
+		var pill: PanelContainer = phase_pills[i]
+		var l: Label = pill.get_child(0)
+		if i == cur:
+			pill.add_theme_stylebox_override("panel", UITheme.box(Color("ff7a2f"), Color("ffb27a"), 4, 1, 7))
+			l.add_theme_color_override("font_color", Color("1a0c04"))
+		elif i < cur:
+			pill.add_theme_stylebox_override("panel", UITheme.box(Color("12244a"), UITheme.LINE, 4, 1, 7))
+			l.add_theme_color_override("font_color", UITheme.TEXT_DIM)
+		else:
+			pill.add_theme_stylebox_override("panel", UITheme.box(Color("0a1530"), Color("16284d"), 4, 1, 7))
+			l.add_theme_color_override("font_color", UITheme.TEXT_FAINT)
+	var who := _active_player()
+	var p := Rules.player(state, who)
+	var col := UITheme.player_color(state, who)
+	player_dot.add_theme_stylebox_override("panel", UITheme.box(col, col.lightened(0.4), 8, 1, 0))
+	var role: String = p.get("side", "")
+	var nm: String = p.get("name", "")
+	player_label.text = "%s%s%s" % [nm, (" · " + role) if role != "" and role != "Pilota" and role != nm else "", "  (IA)" if p.get("type", "") == "ai" else ""]
+	player_chip.add_theme_stylebox_override("panel", UITheme.box(Color(col, 0.16), col, 20, 1, 8))
+	if state.phase == "setup":
+		top_day.text = "SCHIERAMENTO"
+
+func _clear(c: Node) -> void:
+	for ch in c.get_children():
+		c.remove_child(ch)
+		ch.queue_free()
+
+func _refresh_side() -> void:
+	_clear(objective_box); _clear(fleet_box); _clear(detail_box); _clear(actions)
+	var me := _active_player()
+	var view := board.viewer if board.viewer != "" else me
+	_build_objectives(view)
+	var mine: Array = state.ships.filter(func(s): return s.owner == view and not s.get("dummy", false) and (Rules.alive(s) or s.destroyed))
+	if mine.is_empty():
+		fleet_box.add_child(UITheme.label("Nessuna nave in gioco.", 15, UITheme.TEXT_DIM))
+	for s in mine:
+		fleet_box.add_child(_ship_card(s))
+	var dummies = state.ships.filter(func(s): return s.owner == view and s.get("dummy", false) and Rules.alive(s)).size()
+	if dummies > 0:
+		fleet_box.add_child(UITheme.label("+ %d falsi bersagli nella Fascia" % dummies, 14, UITheme.TEXT_DIM))
+	var s2 := Rules.ship(state, sel)
+	if not s2.is_empty(): _build_detail(s2)
+	if _is_human(me) and not busy: _build_actions(me)
+
+func _build_objectives(view: String) -> void:
+	match state.scenario:
+		"grand-tour":
+			objective_box.add_child(UITheme.caption("Grand Tour · tappe"))
+			var mine: Array = state.ships.filter(func(s): return s.owner == view)
+			if mine.is_empty(): return
+			var s: Dictionary = mine[0]
+			var grid := GridContainer.new()
+			grid.columns = 4
+			grid.add_theme_constant_override("h_separation", 4)
+			grid.add_theme_constant_override("v_separation", 4)
+			var map := Rules.map_of(state)
+			for item in Scenarios.grand_tour_progress(state, s):
+				var b := SolarMap.body(map, item.id)
+				var chip := _panel(Color(b.color, 0.28) if item.done else Color("0a1530"), Color(b.color) if item.done else UITheme.LINE, 4, 5)
+				var l := UITheme.label(("✓ " if item.done else "") + b.name, 14, UITheme.TEXT if item.done else UITheme.TEXT_FAINT, UITheme.body_bold)
+				l.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+				chip.add_child(l)
+				chip.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+				grid.add_child(chip)
+			objective_box.add_child(grid)
+			var done = s.visited.filter(func(v): return state.sd.required.has(v)).size()
+			var msg := "Rientra e atterra sulla Terra!" if done == state.sd.required.size() else "%d di %d corpi visitati" % [done, state.sd.required.size()]
+			objective_box.add_child(UITheme.label(msg, 14, UITheme.PHOSPHOR if done == state.sd.required.size() else UITheme.TEXT_DIM))
+		"escape":
+			objective_box.add_child(UITheme.caption("Escape"))
+			var txt := ""
+			if view == "P1":
+				var f := Rules.ship(state, state.sd.get("fugitive", ""))
+				txt = "Fuggitivi a bordo: [b]%s[/b]. Esci dal bordo di Giove (a destra) con carburante ≥ velocità + 1." % (f.name if not f.is_empty() else "da scegliere")
+			else:
+				txt = "Uno dei tre trasporti porta i fuggitivi. Disabilitalo, accoppia la rotta e ispezionalo; poi riportalo a una base."
+				if not state.sd.inspected.is_empty(): txt += "\nIspezionati: " + ", ".join(state.sd.inspected.map(func(id): return Rules.ship(state, id).name))
+			objective_box.add_child(_rich(txt, 15))
+		"lateral-7":
+			objective_box.add_child(UITheme.caption("Lateral 7"))
+			var holder := Rules.ship(state, state.sd.passengers)
+			var t2 := ""
+			if view == "P1": t2 = "Disabilita la nave di linea, accoppia la rotta e prendi i passeggeri; poi fermati a Clandestine."
+			else: t2 = "Porta la nave di linea in un campo di gravità di Ganimede. Il Tycho Brahe si muove solo dopo aver rilevato un pirata."
+			t2 += "\nPasseggeri: [b]%s[/b]" % (holder.name if not holder.is_empty() and Rules.is_known(state, view, holder) else "nave sconosciuta")
+			objective_box.add_child(_rich(t2, 15))
+
+func _rich(text: String, size := 16) -> RichTextLabel:
+	var r := RichTextLabel.new()
+	r.bbcode_enabled = true
+	r.fit_content = true
+	r.scroll_active = false
+	r.text = text
+	r.add_theme_font_size_override("normal_font_size", size)
+	r.add_theme_font_size_override("bold_font_size", size)
+	r.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	return r
+
+func _ship_card(s: Dictionary) -> Control:
+	var col := UITheme.player_color(state, s.owner)
+	var is_sel: bool = s.id == sel
+	var card := PanelContainer.new()
+	card.mouse_filter = Control.MOUSE_FILTER_STOP
+	card.mouse_default_cursor_shape = Control.CURSOR_POINTING_HAND
+	var normal_box := UITheme.box(Color("0c1a38") if not is_sel else Color(col, 0.22), col if is_sel else UITheme.LINE, 6, 2 if is_sel else 1, 8)
+	card.add_theme_stylebox_override("panel", normal_box)
+	card.mouse_entered.connect(func(): if not is_sel: card.add_theme_stylebox_override("panel", UITheme.box(Color("12244a"), col, 6, 1, 8)))
+	card.mouse_exited.connect(func(): card.add_theme_stylebox_override("panel", normal_box))
+	card.gui_input.connect(func(ev):
+		if ev is InputEventMouseButton and ev.pressed and ev.button_index == MOUSE_BUTTON_LEFT:
+			sel = s.id
+			if s.landed == "" and Rules.alive(s): board.center_on(s.pos)
+			_refresh())
+	var row := HBoxContainer.new()
+	row.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	row.add_theme_constant_override("separation", 10)
+	card.add_child(row)
+	var icon := ShipIcon.new()
+	icon.type = s.type; icon.color = col; icon.custom_minimum_size = Vector2(38, 38)
+	icon.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	row.add_child(icon)
+	var v := VBoxContainer.new()
+	v.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	v.add_theme_constant_override("separation", 0)
+	v.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	row.add_child(v)
+	var name_l := UITheme.label(s.name, 16, UITheme.TEXT if Rules.alive(s) else UITheme.TEXT_FAINT, UITheme.body_bold)
+	name_l.clip_text = true
+	name_l.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	v.add_child(name_l)
+	var status := _ship_status(s)
+	var st_l := UITheme.label(status[0], 14, status[1])
+	st_l.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	v.add_child(st_l)
+	var fuel := FuelBar.new()
+	fuel.value = 1.0 if s.infinite_fuel else float(s.fuel) / maxf(1.0, float(s.max_fuel))
+	fuel.text = "∞" if s.infinite_fuel else str(s.fuel)
+	fuel.custom_minimum_size = Vector2(46, 34)
+	fuel.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	row.add_child(fuel)
+	return card
+
+func _ship_status(s: Dictionary) -> Array:
+	if s.destroyed: return ["Perduta: " + s.reason, UITheme.DANGER]
+	if s.escaped: return ["In fuga oltre Giove", UITheme.GOOD]
+	if s.get("captured", false): return ["Catturata", UITheme.DANGER]
+	var parts := []
+	var col := UITheme.TEXT_DIM
+	var dt := Rules.disabled_turns(state, s)
+	if dt > 0: parts.append("Disabilitata %d" % dt); col = UITheme.DANGER
+	if s.landed != "": parts.append("A terra · " + SolarMap.body(Rules.map_of(state), s.landed).name)
+	else:
+		var ob := Rules.orbit_body(state, s)
+		if ob != "": parts.append("In orbita · " + SolarMap.body(Rules.map_of(state), ob).name)
+		else: parts.append("Velocità %d" % Hex.length(s.vel))
+	if state.phase == "astrogation" and s.owner == _active_player():
+		var plot: Dictionary = state.plots.get(s.id, {})
+		if plot.get("takeoff", false): parts.append("DECOLLO")
+		elif int(plot.get("land", -1)) >= 0: parts.append("ATTERRAGGIO")
+		elif not plot.get("burns", []).is_empty(): parts.append("spinta ×%d" % plot.burns.size()); col = UITheme.ACCENT_SOFT
+	if s.heroic: parts.append("eroica")
+	return [" · ".join(parts), col]
+
+func _build_detail(s: Dictionary) -> void:
+	if board._concealed(s) or s.get("dummy", false): return
+	detail_box.add_child(UITheme.caption("Nave selezionata"))
+	var col := UITheme.player_color(state, s.owner)
+	var t: Dictionary = ShipTypes.TYPES[s.type]
+	var cargo := ShipTypes.cargo_used(s)
+	var inv := []
+	for k in ["mine", "torpedo", "nuke"]:
+		if int(s.inv.get(k, 0)) > 0: inv.append("%d %s" % [s.inv[k], ShipTypes.ORDNANCE_NAME[k].to_lower()])
+	var lines := [
+		"[font_size=19][b][color=#%s]%s[/color][/b][/font_size]" % [col.to_html(false), s.name],
+		"%s · forza [b]%s[/b]%s" % [t.name, ShipTypes.strength_label(s.type), " · commerciale" if s.commercial else ""],
+		"Carburante [b]%s[/b] · stiva %d/%d t" % ["∞" if s.infinite_fuel else "%d/%d" % [s.fuel, s.max_fuel], cargo, int(s.cargo)],
+		"Vettore [b]%d[/b] · gravità in arrivo [b]%d[/b] · sovraccarico %s" % [Hex.length(s.vel), s.grav.size(), "pronto" if Rules.can_overload(state, s) else ("no" if s.commercial else "usato")],
+	]
+	if not inv.is_empty(): lines.append("A bordo: " + ", ".join(inv))
+	if state.scenario == "escape" and s.owner == "P1" and board.viewer == "P1" and state.sd.get("fugitive", "") == s.id:
+		lines.append("[color=#5be38f]★ Porta i fuggitivi[/color]")
+	if state.scenario == "escape" and state.sd.get("inspected", []).has(s.id):
+		lines.append("[color=#7fe0ee]Ispezionato: %s[/color]" % ("fuggitivi!" if state.sd.fugitive == s.id else "esca"))
+	if s.get("locked", false): lines.append("[color=#ffc94a]Bloccato fino al rilevamento di un pirata[/color]")
+	detail_box.add_child(_rich("\n".join(lines), 15))
+
+func _action_button(text: String, enabled := true, tooltip := "") -> Button:
+	var b := Button.new()
+	b.text = text
+	b.disabled = not enabled
+	b.tooltip_text = tooltip
+	b.custom_minimum_size = Vector2(0, 38)
+	actions.add_child(b)
+	return b
+
+func _build_actions(me: String) -> void:
+	var s := Rules.ship(state, sel)
+	match state.phase:
+		"setup":
+			if state.scenario == "escape":
+				actions.add_child(_rich("Clicca in segreto sul trasporto che porta i [b]fuggitivi[/b] (sulla Terra).", 16))
+				for t in state.ships.filter(func(x): return x.owner == "P1"):
+					var b := _action_button("FUGGITIVI SUL %s" % t.name.to_upper())
+					b.pressed.connect(func():
+						Scenarios.choose_fugitive(state, t.id)
+						_after_step(state.log.size() - 1)
+						_refresh(); _flow())
+			elif state.scenario == "lateral-7":
+				var unit := Scenarios.next_placement(state)
+				if not unit.is_empty():
+					var what: String = "falso bersaglio" if unit[1] == "dummy" else unit[2]
+					var left: int = state.sd.queue[me].size()
+					actions.add_child(_rich("Colloca: [b]%s[/b]\nClicca un esagono di asteroidi libero (evidenziato). Ne restano %d." % [what, left], 16))
+					var auto := _action_button("SCHIERAMENTO AUTOMATICO")
+					auto.pressed.connect(func():
+						var n: int = state.log.size()
+						Scenarios.auto_place(state)
+						_after_step(n)
+						_refresh(); _flow())
+		"astrogation":
+			if s.is_empty() or s.owner != me or not Rules.alive(s):
+				actions.add_child(_rich("Seleziona una nave (sulla plancia o nella flotta) per tracciarne la rotta.", 15))
+				return
+			_build_astrogation_actions(s)
+		"ordnance":
+			if s.is_empty() or s.owner != me:
+				actions.add_child(_rich("Seleziona una nave armata per lanciare un ordigno, oppure conferma.", 15))
+				return
+			for k in ["mine", "torpedo", "nuke"]:
+				if int(s.inv.get(k, 0)) <= 0: continue
+				var err := Rules.can_launch(state, s, k)
+				var b2 := _action_button("LANCIA %s (%d)" % [ShipTypes.ORDNANCE_NAME[k].to_upper(), s.inv[k]], err == "", err)
+				if k == "torpedo":
+					b2.pressed.connect(func(): mode = "torpedo"; _refresh(); _toast("Scegli dove spingere il siluro (1 o 2 esagoni)"))
+				else:
+					b2.pressed.connect(func():
+						var e2 := Rules.launch(state, s.id, k)
+						if e2 != "": _toast(e2, true)
+						else: _append_log(state.log[-1])
+						_refresh())
+			if mode == "torpedo":
+				actions.add_child(_rich("Clicca un esagono evidenziato: il siluro eredita il vettore della nave e accelera di 1 o 2.", 15))
+				var c := _action_button("ANNULLA")
+				c.pressed.connect(func(): mode = ""; _refresh())
+		"combat":
+			if not state.pending_attack.is_empty():
+				return
+			actions.add_child(_rich("Clicca le tue navi per formare il gruppo d'attacco, poi i bersagli nemici nello stesso esagono.", 15))
+			if not attackers.is_empty() and not targets.is_empty():
+				var a_list: Array = attackers.map(func(id): return Rules.ship(state, id))
+				var t_list: Array = targets.map(func(id): return Rules.ship(state, id))
+				var p := Rules.attack_preview(state, a_list, t_list)
+				actions.add_child(_odds_panel(p))
+				var fire := UITheme.primary_button("APRI IL FUOCO")
+				fire.custom_minimum_size = Vector2(0, 44)
+				fire.pressed.connect(_fire)
+				actions.add_child(fire)
+				var clr := _action_button("ANNULLA SELEZIONE")
+				clr.pressed.connect(func(): attackers = []; targets = []; _refresh())
+		"resupply":
+			if s.is_empty() or s.owner != me:
+				actions.add_child(_rich("Le navi in base o in orbita sopra una base amica si riforniscono a fine fase.", 15))
+				return
+			var b0 := Rules.docked_base(state, s)
+			if not b0.is_empty():
+				actions.add_child(_rich("Accoppiata con la base di %s." % SolarMap.body(Rules.map_of(state), b0.body).name, 15))
+			for k in ["mine", "torpedo", "nuke"]:
+				var err3 := Rules.can_load(state, s, k)
+				if err3 == "" or int(s.inv.get(k, 0)) > 0 and not b0.is_empty():
+					var row := HBoxContainer.new()
+					var lbl := UITheme.label("%s: %d" % [ShipTypes.ORDNANCE_NAME[k], s.inv.get(k, 0)], 16)
+					lbl.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+					row.add_child(lbl)
+					var minus := Button.new(); minus.text = "−"; minus.custom_minimum_size = Vector2(36, 32)
+					minus.pressed.connect(func(): Rules.unload_ordnance(state, s.id, k); _refresh())
+					var plus := Button.new(); plus.text = "+"; plus.custom_minimum_size = Vector2(36, 32); plus.disabled = err3 != ""
+					plus.pressed.connect(func(): Rules.load_ordnance(state, s.id, k); _refresh())
+					row.add_child(minus); row.add_child(plus)
+					actions.add_child(row)
+			for act in _matched_actions(s):
+				var ab := _action_button(act.label)
+				ab.pressed.connect(func():
+					var n = state.log.size()
+					var e4: String = act.call.call()
+					if e4 != "": _toast(e4, true)
+					_after_step(n)
+					_refresh()
+					if state.over: _show_victory())
+			if state.rules.get("surrender", false) and not s.surrendered and not s.get("patrol", false) and s.commercial:
+				var sb := _action_button("ARRENDITI")
+				sb.tooltip_text = "La nave si arrende: il nemico può saccheggiarla senza disabilitarla."
+				sb.pressed.connect(func(): Rules.surrender(state, s.id); _append_log(state.log[-1]); _refresh())
+
+func _build_astrogation_actions(s: Dictionary) -> void:
+	if s.landed != "":
+		var plot: Dictionary = state.plots.get(s.id, {})
+		var can := Rules.can_take_off(state, s)
+		if _finished(s):
+			actions.add_child(_rich("[color=#5be38f]Grand Tour completato![/color]", 16))
+			return
+		var b := _action_button("ANNULLA DECOLLO" if plot.get("takeoff", false) else "DECOLLA CON IL BOOSTER", can, "" if can else "Serve una base amica sul lato di atterraggio")
+		b.pressed.connect(func():
+			var np := {} if plot.get("takeoff", false) else {"takeoff": true}
+			var err := Rules.set_plot(state, s.id, np)
+			if err != "": _toast(err, true)
+			_refresh())
+		actions.add_child(_rich("Il booster porta la nave ferma nell'esagono di gravità sopra la base: al turno dopo [b]deve[/b] accendere i motori o ricade.", 14))
+		return
+	if Rules.is_disabled(state, s):
+		actions.add_child(_rich("[color=#ff6070]Disabilitata[/color]: va alla deriva per %d turni." % Rules.disabled_turns(state, s), 15))
+		return
+	if s.get("locked", false):
+		actions.add_child(_rich("Il dreadnought resta fermo finché un pirata non viene rilevato.", 15))
+		return
+	var plot2: Dictionary = state.plots.get(s.id, {})
+	actions.add_child(_rich("Clicca un esagono [color=#49d3e6]azzurro[/color] attorno al punto d'arrivo per spendere 1 carburante; il centro è la deriva.%s" % (" Dopo la prima spinta compaiono gli esagoni [color=#ff9a5c]arancio[/color] del sovraccarico." if Rules.can_overload(state, s) else ""), 14))
+	var row := HBoxContainer.new()
+	row.add_theme_constant_override("separation", 6)
+	actions.add_child(row)
+	var drift := Button.new(); drift.text = "DERIVA"; drift.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	drift.tooltip_text = "Nessuna spinta (barra spaziatrice)"
+	drift.pressed.connect(func(): Rules.set_plot(state, s.id, {"burns": [], "weak": plot2.get("weak", false)}); _refresh())
+	row.add_child(drift)
+	var nxt := Button.new(); nxt.text = "PROSSIMA ▸"; nxt.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	nxt.tooltip_text = "Seleziona la nave successiva (Tab)"
+	nxt.pressed.connect(_select_next)
+	row.add_child(nxt)
+	var sides := Rules.landing_sides(state, s)
+	if not sides.is_empty():
+		var landing := int(plot2.get("land", -1)) >= 0
+		var lb := _action_button("ANNULLA ATTERRAGGIO" if landing else "ATTERRA (1 carburante)")
+		lb.pressed.connect(func():
+			var err := Rules.set_plot(state, s.id, {} if landing else {"land": sides[0]})
+			if err != "": _toast(err, true)
+			_refresh())
+	# gravità debole sul percorso
+	var pr := Rules.predict(state, s, plot2)
+	var map := Rules.map_of(state)
+	var weak_on_path := false
+	for h in pr.get("path", []):
+		if map.gravity.has(h) and map.gravity[h].any(func(g): return g.weak): weak_on_path = true
+	if weak_on_path or plot2.get("weak", false):
+		var cb := CheckBox.new()
+		cb.text = "Usa la prima freccia debole (Luna/Io/Europa)"
+		cb.button_pressed = plot2.get("weak", false)
+		cb.toggled.connect(func(on):
+			var np2: Dictionary = state.plots.get(s.id, {}).duplicate(true)
+			np2.weak = on
+			Rules.set_plot(state, s.id, np2)
+			_refresh())
+		actions.add_child(cb)
+	for tid in Rules.ram_candidates(state, s, pr):
+		var t := Rules.ship(state, tid)
+		var on: bool = plot2.get("ram", "") == tid
+		var rb := _action_button(("✓ " if on else "") + "SPERONA %s" % (t.name.to_upper() if Rules.is_known(state, s.owner, t) else "LA PEDINA"))
+		rb.tooltip_text = "Colonna Speronamento: il risultato si applica a entrambe le navi"
+		rb.pressed.connect(func():
+			var np3: Dictionary = state.plots.get(s.id, {}).duplicate(true)
+			np3.ram = "" if on else tid
+			Rules.set_plot(state, s.id, np3)
+			_refresh())
+	if _needs_dummy_choice(s):
+		var chosen: Array = plot2.get("dummies", [])
+		actions.add_child(_rich("[color=#ffc94a]Prima accensione:[/color] scegli sulla plancia 3 tuoi falsi bersagli da ritirare (%d/3). Se non scegli, li ritiro io." % chosen.size(), 14))
+	# avvisi sulla rotta
+	if pr.get("crash", "") != "": actions.add_child(_rich("[color=#ff4d5e]⚠ Rotta di collisione con %s![/color]" % SolarMap.body(map, pr.crash).name, 16))
+	elif pr.get("offmap", false):
+		var esc: bool = state.scenario == "escape" and s.owner == "P1" and pr.dest.y < 0
+		actions.add_child(_rich("[color=%s]%s[/color]" % ["#5be38f" if esc else "#ff4d5e", "Uscita oltre Giove: fuga!" if esc else "⚠ La rotta esce dalla plancia: nave perduta."], 16))
+	elif pr.get("special", false): actions.add_child(_rich("[color=#ff4d5e]⚠ Asteroidi speciali: distruzione certa.[/color]", 16))
+	elif not pr.get("asteroids", []).is_empty(): actions.add_child(_rich("[color=#ffc94a]Attraversa %d esagoni di asteroidi a velocità > 1: tiro di pericolo.[/color]" % pr.asteroids.size(), 15))
+	if not pr.get("grav", []).is_empty():
+		actions.add_child(_rich("Raccoglie %d spinta/e di gravità per il turno successivo." % pr.grav.size(), 14))
+
+func _odds_panel(p: Dictionary) -> Control:
+	var box := _panel(Color("0c1a38"), UITheme.LINE_BRIGHT, 6, 10)
+	var v := VBoxContainer.new()
+	box.add_child(v)
+	v.add_child(_rich("[b]%d : %d[/b] → colonna [b]%s[/b]\nDistanza %d · velocità relativa %d · modificatore [b]%+d[/b]%s" % [p.att, p.def, p.odds, p.range, p.rv, p.mod, " · eroica +1" if p.heroic else ""], 15))
+	var bar := ChanceBar.new()
+	bar.chances = p.chances
+	bar.custom_minimum_size = Vector2(0, 26)
+	v.add_child(bar)
+	return box
+
+func _select_next() -> void:
+	var me := _active_player()
+	var mine = state.ships.filter(func(s): return s.owner == me and Rules.alive(s) and not s.get("dummy", false))
+	if mine.is_empty(): return
+	var idx := -1
+	for i in range(mine.size()):
+		if mine[i].id == sel: idx = i
+	sel = mine[(idx + 1) % mine.size()].id
+	var s := Rules.ship(state, sel)
+	if s.landed == "": board.center_on(s.pos)
+	_refresh()
+
+func _center_selected() -> void:
+	var s := Rules.ship(state, sel)
+	if not s.is_empty(): board.center_on(s.pos, 26.0)
+
+func _refresh_bottom() -> void:
+	var me := _active_player()
+	var human := _is_human(me)
+	primary.disabled = busy or not human or state.over or state.phase == "setup" or not state.pending_attack.is_empty()
+	var name: String = Rules.player(state, me).get("name", "")
+	match state.phase:
+		"setup": hint.text = "[b]%s[/b]: preparazione segreta dello scenario." % name
+		"astrogation":
+			primary.text = "CONFERMA LE ROTTE ▸"
+			var pending = state.ships.filter(func(s): return s.owner == me and Rules.alive(s) and not s.get("dummy", false) and s.landed == "" and not Rules.is_disabled(state, s)).size()
+			hint.text = "[b]Astrogazione[/b] · scegli la spinta di ogni nave: il tratteggio è la rotta prevista. %s" % ("Nessuna nave in volo." if pending == 0 else "")
+		"ordnance":
+			primary.text = "MUOVI LE NAVI ▸"
+			hint.text = "[b]Ordigni[/b] · al massimo un lancio per nave. Mine e testate richiedono un cambio di rotta."
+		"combat":
+			primary.text = "APRI IL FUOCO" if not attackers.is_empty() and not targets.is_empty() else "FINE COMBATTIMENTO ▸"
+			hint.text = "[b]Combattimento[/b] · ogni nave attacca e viene attaccata una sola volta per fase."
+		"resupply":
+			primary.text = "FINE TURNO ▸"
+			hint.text = "[b]Rifornimento[/b] · carico, ispezioni e trasferimenti fra navi con la stessa rotta."
+		"over":
+			primary.text = "PARTITA CONCLUSA"
+			hint.text = state.result
+	if not human and not state.over:
+		hint.text = "[color=#7fe0ee]Turno di %s (IA)…[/color]" % name
+
+# ================================================================ combattimento
+
+func _fire() -> void:
+	if attackers.is_empty() or targets.is_empty(): return
+	var err := Rules.declare_attack(state, attackers, targets)
+	if err != "":
+		_toast(err, true)
+		return
+	for a in attackers:
+		for t in targets:
+			board.fx_list.append({"kind": "fire", "world": Board.world(Rules.ship(state, a).pos), "to": Board.world(Rules.ship(state, t).pos), "t0": board._time})
+	attackers = []; targets = []
+	var defender: String = state.pending_attack.defender
+	if not _is_human(defender):
+		var n = state.log.size()
+		AI.respond_counter(state)
+		_after_step(n)
+		_show_combat_result()
+		_refresh()
+		if state.over: _show_victory()
+		return
+	_show_counter_dialog()
+
+func _show_combat_result() -> void:
+	var lc: Dictionary = state.get("last_combat", {})
+	if lc.is_empty(): return
+	var main: Dictionary = lc.main
+	var txt := "Dado %d %+d → %s" % [main.die, main.mod, _res_word(main.result)]
+	if not lc.counter.is_empty(): txt += "   ·   contrattacco: %s" % _res_word(lc.counter.result)
+	_toast(txt, main.result == "-")
+
+func _res_word(r: String) -> String:
+	if r == "-": return "mancato"
+	if r == "E": return "ELIMINATA"
+	return "disabilitata %s" % r.substr(1)
+
+func _show_counter_dialog() -> void:
+	if dialog != null: dialog.queue_free()
+	var pa: Dictionary = state.pending_attack
+	dialog = _modal()
+	var card: VBoxContainer = dialog.get_meta("card")
+	var defender := Rules.player(state, pa.defender)
+	card.add_child(UITheme.label("CONTRATTACCO", 28, UITheme.ACCENT, UITheme.display))
+	var att_names: Array = pa.attackers.map(func(id): return Rules.ship(state, id).name)
+	var tgt_names: Array = pa.targets.map(func(id): return Rules.ship(state, id).name)
+	card.add_child(_rich("[b]%s[/b], le tue navi %s sono sotto il fuoco di %s.\nPuoi contrattaccare prima che i danni vengano applicati." % [defender.name, ", ".join(tgt_names), ", ".join(att_names)], 17))
+	var cands := Rules.counter_candidates(state)
+	var picked_c := cands.duplicate()
+	var picked_t: Array = pa.attackers.duplicate()
+	if cands.is_empty():
+		card.add_child(_rich("[color=#9aa7c2]Nessuna nave può rispondere (commerciale o disabilitata).[/color]", 16))
+	else:
+		card.add_child(UITheme.caption("Navi che rispondono"))
+		for id in cands:
+			var cb := CheckBox.new(); cb.text = Rules.ship(state, id).name; cb.button_pressed = true
+			cb.toggled.connect(func(on): if on: picked_c.append(id) else: picked_c.erase(id))
+			card.add_child(cb)
+		card.add_child(UITheme.caption("Bersagli del contrattacco"))
+		for id in pa.attackers:
+			var cb2 := CheckBox.new(); cb2.text = Rules.ship(state, id).name; cb2.button_pressed = true
+			cb2.toggled.connect(func(on): if on: picked_t.append(id) else: picked_t.erase(id))
+			card.add_child(cb2)
+	var row := HBoxContainer.new()
+	row.add_theme_constant_override("separation", 10)
+	card.add_child(row)
+	if not cands.is_empty():
+		var yes := UITheme.primary_button("CONTRATTACCA")
+		yes.custom_minimum_size = Vector2(200, 46)
+		yes.pressed.connect(func(): _resolve_counter(picked_c, picked_t))
+		row.add_child(yes)
+	var no := Button.new(); no.text = "NESSUNA RISPOSTA" if not cands.is_empty() else "RISOLVI L'ATTACCO"; no.custom_minimum_size = Vector2(200, 46)
+	no.pressed.connect(func(): _resolve_counter([], []))
+	row.add_child(no)
+	add_child(dialog)
+	_refresh()
+
+func _resolve_counter(c: Array, t: Array) -> void:
+	var n = state.log.size()
+	Rules.resolve_attack(state, c, t)
+	if dialog != null: dialog.queue_free(); dialog = null
+	_after_step(n)
+	_show_combat_result()
+	_refresh()
+	if state.over: _show_victory()
+	else: _flow()
+
+# ================================================================ schermate modali
+
+func _modal(width := 560.0) -> Control:
+	var root := ColorRect.new()
+	root.color = Color(0.01, 0.02, 0.06, 0.78)
+	root.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	root.mouse_filter = Control.MOUSE_FILTER_STOP
+	var center := CenterContainer.new()
+	center.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	root.add_child(center)
+	var panel := _panel(Color("0a1630"), UITheme.LINE_BRIGHT, 10, 26)
+	panel.custom_minimum_size = Vector2(width, 0)
+	center.add_child(panel)
+	var card := VBoxContainer.new()
+	card.add_theme_constant_override("separation", 12)
+	panel.add_child(card)
+	root.set_meta("card", card)
+	return root
+
+func _show_privacy(pid: String) -> void:
+	var p := Rules.player(state, pid)
+	board.visible = false
+	hud.visible = false
+	privacy = _modal(520)
+	privacy.color = Color("040914")
+	var card: VBoxContainer = privacy.get_meta("card")
+	var dot := Panel.new(); dot.custom_minimum_size = Vector2(0, 6)
+	dot.add_theme_stylebox_override("panel", UITheme.box(UITheme.player_color(state, pid), Color.TRANSPARENT, 3, 0, 0))
+	card.add_child(dot)
+	card.add_child(UITheme.label("PASSA IL COMANDO", 16, UITheme.TEXT_DIM, UITheme.body_bold))
+	var l := UITheme.label(p.name.to_upper(), 36, UITheme.player_color(state, pid), UITheme.display)
+	card.add_child(l)
+	card.add_child(_rich("Gli altri giocatori distolgano lo sguardo: in questo scenario ci sono informazioni nascoste.", 17))
+	var go := UITheme.primary_button("SONO PRONTO")
+	go.custom_minimum_size = Vector2(0, 50)
+	card.add_child(go)
+	add_child(privacy)
+	await go.pressed
+	privacy.queue_free()
+	privacy = null
+	board.visible = true
+	hud.visible = true
+
+func _show_victory() -> void:
+	if victory != null: victory.queue_free()
+	victory = _modal(620)
+	var card: VBoxContainer = victory.get_meta("card")
+	var title := "PARTITA CONCLUSA"
+	var col := UITheme.TEXT
+	if state.winner != "" and state.winner != "pari":
+		title = "VITTORIA · " + Rules.player(state, state.winner).name.to_upper()
+		col = UITheme.player_color(state, state.winner)
+	card.add_child(UITheme.label(title, 30, col, UITheme.display))
+	card.add_child(_rich(state.result, 19))
+	var stats := []
+	for s in state.ships:
+		if s.get("dummy", false): continue
+		var tag: String = "perduta" if s.destroyed else ("in fuga" if s.escaped else "in gioco")
+		stats.append("[color=#%s]■[/color] %s — %s, carburante consumato %d" % [UITheme.player_color(state, s.owner).to_html(false), s.name, tag, s.fuel_spent])
+	if state.scenario == "escape":
+		var f := Rules.ship(state, state.sd.get("fugitive", ""))
+		if not f.is_empty(): stats.append("I fuggitivi erano sul [b]%s[/b]." % f.name)
+	card.add_child(_rich("\n".join(stats), 15))
+	var row := HBoxContainer.new()
+	row.add_theme_constant_override("separation", 10)
+	card.add_child(row)
+	var again := UITheme.primary_button("NUOVA PARTITA")
+	again.custom_minimum_size = Vector2(220, 46)
+	again.pressed.connect(func(): victory.queue_free(); victory = null; _show_menu())
+	row.add_child(again)
+	var look := Button.new(); look.text = "GUARDA LA PLANCIA"; look.custom_minimum_size = Vector2(220, 46)
+	look.pressed.connect(func(): victory.queue_free(); victory = null)
+	row.add_child(look)
+	add_child(victory)
+
+func _toast(text: String, warn := false) -> void:
+	toast.text = text
+	toast.add_theme_color_override("font_color", UITheme.WARN if warn else UITheme.TEXT)
+	if toast_tween != null: toast_tween.kill()
+	toast.modulate.a = 1.0
+	toast_tween = create_tween()
+	toast_tween.tween_interval(2.2)
+	toast_tween.tween_property(toast, "modulate:a", 0.0, 0.6)
+
+func _open_game_menu() -> void:
+	if dialog != null: dialog.queue_free()
+	dialog = _modal(460)
+	var card: VBoxContainer = dialog.get_meta("card")
+	card.add_child(UITheme.label("MENU", 28, UITheme.ACCENT, UITheme.display))
+	var close := func(): dialog.queue_free(); dialog = null
+	var items := [
+		["RIPRENDI", func(): close.call()],
+		["SALVA (slot 1)", func():
+			Persistence.save_slot(state, "slot1"); _toast("Partita salvata"); close.call()],
+		["CARICA (slot 1)", func():
+			var st := Persistence.load_slot("slot1")
+			close.call()
+			if st.is_empty(): _toast("Nessun salvataggio", true)
+			else: _start_game(st)],
+		["COPIA IL SALVATAGGIO NEGLI APPUNTI", func():
+			DisplayServer.clipboard_set(Persistence.to_json(state)); _toast("Salvataggio copiato"); close.call()],
+		["INCOLLA UN SALVATAGGIO", func():
+			var st2 := Persistence.from_json(DisplayServer.clipboard_get())
+			close.call()
+			if st2.is_empty(): _toast("Negli appunti non c'è un salvataggio valido", true)
+			else: _start_game(st2)],
+		["VELOCITÀ ANIMAZIONI: %s" % ("RAPIDA" if anim_speed > 1.0 else "NORMALE"), func():
+			anim_speed = 1.0 if anim_speed > 1.0 else 2.2; close.call()],
+		["ESCI AL MENU PRINCIPALE", func(): close.call(); _show_menu()],
+	]
+	for it in items:
+		var b := Button.new(); b.text = it[0]; b.custom_minimum_size = Vector2(0, 44)
+		b.pressed.connect(it[1])
+		card.add_child(b)
+	add_child(dialog)
+
+# ================================================================ guida
+
+func _build_help() -> void:
+	help = _modal(820)
+	help.visible = false
+	var card: VBoxContainer = help.get_meta("card")
+	card.add_child(UITheme.label("COME SI GIOCA", 28, UITheme.ACCENT, UITheme.display))
+	var scroll := ScrollContainer.new()
+	scroll.custom_minimum_size = Vector2(0, 470)
+	scroll.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
+	card.add_child(scroll)
+	var text := _rich(HELP_TEXT, 16)
+	text.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	scroll.add_child(text)
+	var ok := UITheme.primary_button("HO CAPITO")
+	ok.custom_minimum_size = Vector2(0, 46)
+	ok.pressed.connect(func(): help.visible = false)
+	card.add_child(ok)
+	add_child(help)
+
+const HELP_TEXT := """[b][color=#ff9a5c]Il turno[/color][/b]
+Ogni turno è un giorno. Ogni giocatore, a rotazione, svolge cinque fasi: [b]Astrogazione[/b] (si pianificano le rotte), [b]Ordigni[/b] (mine, siluri, testate), [b]Movimento[/b] (tutto si muove insieme), [b]Combattimento[/b] e [b]Rifornimento[/b]. Le fasi senza scelte vengono saltate da sole.
+
+[b][color=#ff9a5c]Movimento vettoriale[/color][/b]
+Una nave ripete ogni turno lo stesso spostamento del turno precedente (la freccia tratteggiata). Selezionala e clicca uno dei sei esagoni [color=#49d3e6]azzurri[/color] attorno al punto d'arrivo: costa 1 punto carburante e sposta l'arrivo di un esagono. Il centro è la deriva. Le navi da guerra possono fare un [color=#ff9a5c]sovraccarico[/color] (due spinte) una volta fra due manutenzioni. Le rotte percorse restano tracciate col numero del giorno; un cerchietto alla base indica una spinta.
+
+[b][color=#ff9a5c]Gravità[/color][/b]
+Le frecce attorno ai corpi celesti spingono di un esagono, ma [b]il turno dopo[/b] averle attraversate, e si sommano. Le frecce vuote (Luna, Io, Europa) sono deboli: la prima si può ignorare, la seconda consecutiva è obbligatoria. Attorno al Sole la mappa usata ha due anelli (le frecce doppie valgono due spinte); nel menu c'è la variante classica a un solo anello.
+
+[b][color=#ff9a5c]Orbite, atterraggi, decolli[/color][/b]
+Muovendosi a velocità 1 da un esagono di gravità al successivo dello stesso corpo senza spinta, la nave è in orbita stabile. Da un'orbita si atterra su una base spendendo 1 carburante. Il decollo usa il booster della base: la nave resta ferma sopra la base e al turno dopo deve accendere i motori, altrimenti ricade. Attraversare il disco di un corpo significa schiantarsi; uscire dalla plancia significa perdere la nave.
+
+[b][color=#ff9a5c]Rifornimento[/color][/b]
+A terra su una base amica, oppure in orbita sopra un lato con una base, la nave fa il pieno e la manutenzione (torna disponibile il sovraccarico). Ceres e Clandestine sono basi negli asteroidi: ci si ferma nell'esagono.
+
+[b][color=#ff9a5c]Combattimento[/color][/b]
+Somma le forze degli attaccanti e dei bersagli (stesso esagono) e riduci il rapporto a favore del difensore: 1:2, 1:1, 2:1, 3:1, 4:1. Al dado si sottrae la distanza minima fra la rotta dell'attaccante e la posizione del bersaglio, e 1 per ogni punto di velocità relativa oltre 2. Il difensore può contrattaccare prima che i danni siano applicati. Dn disabilita per n turni (la nave va alla deriva), E elimina; arrivare a 6 turni di disabilitazione distrugge la nave. Le navi commerciali (forza con la D) non sparano.
+
+[b][color=#ff9a5c]Ordigni e pericoli[/color][/b]
+Mine (10 t) e testate (20 t) ereditano il vettore della nave, che deve cambiare rotta; i siluri (20 t, solo navi da guerra) accelerano di 1 o 2 al lancio. Durano cinque turni. Attraversare asteroidi a velocità superiore a 1 richiede un tiro per esagono.
+
+[b][color=#ff9a5c]Comandi[/color][/b]
+Rotella: zoom · trascina: sposta la plancia · clic destro: annulla la selezione · Tab: nave successiva · barra spaziatrice: deriva · Invio: conferma la fase · F: adatta la plancia."""
+
+# ================================================================ menu principale
+
+func _show_menu() -> void:
+	menu.visible = true
+	hud.visible = false
+	board.visible = false
+	tip.visible = false
+	_build_menu_detail()
+
+func _build_menu() -> void:
+	menu = Control.new()
+	menu.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	add_child(menu)
+	var bg := MenuBackdrop.new()
+	bg.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	menu.add_child(bg)
+	var margin := MarginContainer.new()
+	margin.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	for side in ["left", "right", "top", "bottom"]: margin.add_theme_constant_override("margin_" + side, 34)
+	menu.add_child(margin)
+	var cols := HBoxContainer.new()
+	cols.add_theme_constant_override("separation", 30)
+	margin.add_child(cols)
+	# colonna sinistra: copertina e titolo
+	var left := VBoxContainer.new()
+	left.custom_minimum_size = Vector2(380, 0)
+	left.add_theme_constant_override("separation", 10)
+	cols.add_child(left)
+	var title := UITheme.label("TRIPLANETARY", 46, UITheme.PHOSPHOR, UITheme.display)
+	title.add_theme_color_override("font_outline_color", Color("c2321f"))
+	title.add_theme_constant_override("outline_size", 6)
+	left.add_child(title)
+	left.add_child(UITheme.label("COMBATTIMENTO SPAZIALE NEL SISTEMA SOLARE · 2001 AD", 15, UITheme.TEXT, UITheme.body_bold))
+	var cover := TextureRect.new()
+	cover.texture = load("res://assets/ui/original-cover.webp")
+	cover.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
+	cover.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
+	cover.size_flags_vertical = Control.SIZE_EXPAND_FILL
+	left.add_child(cover)
+	left.add_child(UITheme.label("Edizione digitale non ufficiale per uso personale.\nRegole: Updated Second Edition, GDW 1973/1981.", 13, UITheme.TEXT_FAINT))
+	# colonna centrale: scenari
+	var mid := VBoxContainer.new()
+	mid.custom_minimum_size = Vector2(330, 0)
+	mid.add_theme_constant_override("separation", 6)
+	cols.add_child(mid)
+	mid.add_child(UITheme.caption("Scenari", UITheme.ACCENT))
+	var list := VBoxContainer.new()
+	list.add_theme_constant_override("separation", 6)
+	list.name = "ScenarioList"
+	mid.add_child(list)
+	for c in Scenarios.CATALOG:
+		var b := Button.new()
+		b.alignment = HORIZONTAL_ALIGNMENT_LEFT
+		b.custom_minimum_size = Vector2(0, 46)
+		b.text = "%s   ·   %s giocatori%s" % [c.title.to_upper(), c.players, "" if c.playable else "   (presto)"]
+		b.disabled = not c.playable
+		b.set_meta("id", c.id)
+		b.pressed.connect(func(): menu_scenario = c.id; _build_menu_detail())
+		list.add_child(b)
+	var cont := Button.new()
+	cont.name = "Continue"
+	cont.custom_minimum_size = Vector2(0, 46)
+	cont.pressed.connect(func():
+		var st := Persistence.load_slot("auto")
+		if not st.is_empty(): _start_game(st))
+	mid.add_child(Control.new())
+	mid.add_child(cont)
+	# colonna destra: dettaglio e equipaggi
+	var right_panel := _panel(Color("08122ae6"), UITheme.LINE, 10, 20)
+	right_panel.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	cols.add_child(right_panel)
+	var rs := ScrollContainer.new()
+	rs.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
+	right_panel.add_child(rs)
+	menu_detail = VBoxContainer.new()
+	menu_detail.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	menu_detail.add_theme_constant_override("separation", 10)
+	rs.add_child(menu_detail)
+
+func _build_menu_detail() -> void:
+	var info := Scenarios.info(menu_scenario)
+	var list: VBoxContainer = menu.find_child("ScenarioList", true, false)
+	for b in list.get_children():
+		var on: bool = b.get_meta("id") == menu_scenario
+		b.add_theme_stylebox_override("normal", UITheme.box(Color("2a1a10") if on else Color("10224a"), UITheme.ACCENT if on else UITheme.LINE_BRIGHT, 5, 2 if on else 1, 12))
+	var cont: Button = menu.find_child("Continue", true, false)
+	var summary := Persistence.slot_summary("auto")
+	cont.visible = summary != ""
+	cont.text = "CONTINUA: " + summary.to_upper()
+	_clear(menu_detail)
+	menu_detail.add_child(UITheme.label(info.title.to_upper(), 32, UITheme.TEXT, UITheme.display))
+	var meta := "%s giocatori · %s" % [info.players, info.length]
+	if info.year != "": meta = info.year + " · " + meta
+	menu_detail.add_child(UITheme.label(meta, 16, UITheme.ACCENT_SOFT, UITheme.body_bold))
+	menu_detail.add_child(_rich(info.blurb, 18))
+	menu_detail.add_child(UITheme.caption("Equipaggi"))
+	var n_max: int = info.max
+	if menu_seats.size() != 6:
+		menu_seats = []
+		for i in range(6): menu_seats.append({"name": "", "type": "human" if i == 0 else ("ai" if i == 1 else "none")})
+	var grid := GridContainer.new()
+	grid.columns = 3
+	grid.add_theme_constant_override("h_separation", 10)
+	grid.add_theme_constant_override("v_separation", 8)
+	menu_detail.add_child(grid)
+	for i in range(n_max):
+		var seat: Dictionary = menu_seats[i]
+		var col := Color(Scenarios.PLAYER_COLORS[i])
+		var side_name: String = info.sides[i] if i < info.sides.size() else "Giocatore"
+		var lbl := UITheme.label(side_name.to_upper(), 15, col, UITheme.body_bold)
+		lbl.custom_minimum_size = Vector2(110, 0)
+		grid.add_child(lbl)
+		var name_edit := LineEdit.new()
+		name_edit.placeholder_text = "%s %d" % [side_name, i + 1] if side_name == "Pilota" else side_name
+		name_edit.text = seat.name
+		name_edit.custom_minimum_size = Vector2(190, 38)
+		name_edit.text_changed.connect(func(t): seat.name = t)
+		grid.add_child(name_edit)
+		var opt := OptionButton.new()
+		opt.add_item("UMANO"); opt.add_item("IA")
+		var can_none := i >= int(info.min)
+		if can_none: opt.add_item("NESSUNO")
+		var idx: int = {"human": 0, "ai": 1, "none": 2}.get(seat.type, 0)
+		if i < int(info.min) and seat.type == "none": seat.type = "ai"; idx = 1
+		opt.select(mini(idx, opt.item_count - 1))
+		opt.custom_minimum_size = Vector2(130, 38)
+		opt.item_selected.connect(func(k): seat.type = ["human", "ai", "none"][k])
+		grid.add_child(opt)
+	menu_detail.add_child(UITheme.caption("Opzioni"))
+	var sol := CheckBox.new()
+	sol.text = "Sol classico: un solo anello di gravità (invece delle frecce doppie della mappa)"
+	sol.button_pressed = menu_options.sol_classic
+	sol.toggled.connect(func(on): menu_options.sol_classic = on)
+	menu_detail.add_child(sol)
+	if menu_scenario == "lateral-7":
+		var lt := CheckBox.new()
+		lt.text = "Variante: la nave di linea parte dalla Terra invece che da Venere"
+		lt.button_pressed = menu_options.liner_terra
+		lt.toggled.connect(func(on): menu_options.liner_terra = on)
+		menu_detail.add_child(lt)
+	var start := UITheme.primary_button("INIZIA LA MISSIONE ▸")
+	start.custom_minimum_size = Vector2(0, 52)
+	start.add_theme_font_size_override("font_size", 20)
+	start.pressed.connect(_start_from_menu)
+	menu_detail.add_child(start)
+
+func _start_from_menu() -> void:
+	var info := Scenarios.info(menu_scenario)
+	var seats := []
+	for i in range(int(info.max)):
+		var seat: Dictionary = menu_seats[i]
+		if seat.type == "none": continue
+		var side_name: String = info.sides[i] if i < info.sides.size() else "Giocatore"
+		var nm: String = seat.name.strip_edges()
+		if nm == "": nm = ("Pilota %d" % (i + 1)) if side_name == "Pilota" else side_name
+		seats.append({"name": nm, "type": seat.type})
+	if seats.size() < int(info.min):
+		_toast("Servono almeno %d giocatori" % info.min, true)
+		return
+	var st := Scenarios.create(menu_scenario, seats, {"sol_classic": menu_options.sol_classic, "liner_terra": menu_options.liner_terra})
+	_start_game(st)
+
+# ================================================================ tastiera
+
+func _unhandled_input(event: InputEvent) -> void:
+	if state.is_empty() or menu.visible or busy: return
+	if event is InputEventKey and event.pressed and not event.echo:
+		match event.keycode:
+			KEY_ENTER, KEY_KP_ENTER: _on_primary()
+			KEY_TAB: _select_next()
+			KEY_F: board.fit()
+			KEY_ESCAPE:
+				sel = ""; mode = ""; attackers = []; targets = []
+				_refresh()
+			KEY_SPACE:
+				var s := Rules.ship(state, sel)
+				if not s.is_empty() and Rules.can_plot(state, s) and s.landed == "":
+					Rules.set_plot(state, s.id, {"burns": []})
+					_refresh()
+			KEY_1, KEY_2, KEY_3, KEY_4, KEY_5, KEY_6:
+				var s2 := Rules.ship(state, sel)
+				if not s2.is_empty() and Rules.can_plot(state, s2) and s2.landed == "":
+					var err := Rules.set_plot(state, s2.id, {"burns": [int(event.keycode - KEY_1)]})
+					if err != "": _toast(err, true)
+					_refresh()

@@ -591,6 +591,9 @@ static func plan_combat(state: Dictionary) -> bool:
 static func respond_counter(state: Dictionary) -> void:
 	var cands := Rules.counter_candidates(state)
 	var att: Array = state.pending_attack.attackers
+	if not cands.is_empty():
+		var p := Rules.attack_preview(state, cands.map(func(id): return Rules.ship(state, id)), att.map(func(id): return Rules.ship(state, id)))
+		if int(p.column) < 0: cands = []
 	Rules.resolve_attack(state, cands, att if not cands.is_empty() else [])
 
 static func plan_resupply(state: Dictionary) -> void:
