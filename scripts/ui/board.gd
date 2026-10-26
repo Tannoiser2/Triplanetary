@@ -107,7 +107,7 @@ func _draw() -> void:
 	for field: Dictionary in state.gravity:
 		var p := axial_to_pixel(field.hex)
 		var target := axial_to_pixel(field.hex + field.acceleration)
-		draw_line(p, p.lerp(target, 0.42), Color("6f8796") if field.weak else Color("d6a947"), 2)
+		draw_line(p, p.lerp(target, 0.42), Color("6f8796a0") if field.weak else Color("d6a947a0"), 0.75)
 	for body: Dictionary in state.bodies:
 		var p := axial_to_pixel(body.hex)
 		draw_circle(p, 13 if body.id == "sol" else 9, Color("f6b94c") if body.id == "sol" else Color("dceaf3"))
@@ -127,20 +127,20 @@ func _draw() -> void:
 				_draw_route_arc(axial_to_pixel(trail[i - 1]), axial_to_pixel(trail[i]), Color(color, 0.9))
 				draw_circle(axial_to_pixel(trail[i]), 2.5, color)
 		_draw_maneuver_history(ship)
-		draw_circle(p, 7, color)
+		draw_circle(p, 5, color)
 		if ship.id == selected_ship: draw_arc(p, 10, 0, TAU, 24, Color.WHITE, 2)
 		if ship.id == selected_ship and state.phase == "astrogation":
 			var command: Dictionary = state.get("commands", {}).get(ship.id, {})
 			var cursor_hex: Vector2i = ship.position + ship.velocity
 			var vector_end := axial_to_pixel(cursor_hex)
-			draw_dashed_line(p, vector_end, Color("238fbd"), 2.0, 12.0)
+			draw_dashed_line(p, vector_end, Color("238fbd"), 1.15, 8.0)
 			for gravity: Vector2i in ship.get("pending_gravity", []):
 				var gravity_end: Vector2i = cursor_hex + gravity
-				draw_dashed_line(axial_to_pixel(cursor_hex), axial_to_pixel(gravity_end), Color("d94f5c"), 1.4, 5.0)
+				draw_dashed_line(axial_to_pixel(cursor_hex), axial_to_pixel(gravity_end), Color("d94f5c"), 0.9, 4.0)
 				cursor_hex = gravity_end
 			for thrust_step: Vector2i in command.get("thrust_steps", []):
 				var thrust_end: Vector2i = cursor_hex + thrust_step
-				draw_dashed_line(axial_to_pixel(cursor_hex), axial_to_pixel(thrust_end), Color("d39a00"), 1.4, 5.0)
+				draw_dashed_line(axial_to_pixel(cursor_hex), axial_to_pixel(thrust_end), Color("d39a00"), 0.9, 4.0)
 				_draw_marker_hex(axial_to_pixel(thrust_end), 20.0, Color("d39a00"), 2.0)
 				cursor_hex = thrust_end
 			if command.get("thrust_steps", []).is_empty() and ship.get("pending_gravity", []).is_empty():
@@ -164,15 +164,19 @@ func _draw() -> void:
 
 func _draw_maneuver_history(ship: Dictionary) -> void:
 	for maneuver: Dictionary in ship.get("maneuver_history", []):
+		for encounter: Dictionary in maneuver.get("gravity_encounters", []):
+			var field_hex: Vector2i = encounter.hex
+			var effect_hex: Vector2i = field_hex + encounter.acceleration
+			draw_dashed_line(axial_to_pixel(field_hex), axial_to_pixel(effect_hex), Color("d94f5cb0"), 0.7, 4.0)
 		var cursor_hex: Vector2i = maneuver.get("inertial_end", maneuver.get("from", Vector2i.ZERO))
 		for gravity: Vector2i in maneuver.get("gravity_steps", []):
 			var gravity_end: Vector2i = cursor_hex + gravity
-			draw_dashed_line(axial_to_pixel(cursor_hex), axial_to_pixel(gravity_end), Color("d94f5cb8"), 1.2, 5.0)
+			draw_dashed_line(axial_to_pixel(cursor_hex), axial_to_pixel(gravity_end), Color("d94f5cb8"), 0.7, 4.0)
 			cursor_hex = gravity_end
 		for thrust: Vector2i in maneuver.get("thrust_steps", []):
 			var thrust_end: Vector2i = cursor_hex + thrust
-			draw_dashed_line(axial_to_pixel(cursor_hex), axial_to_pixel(thrust_end), Color("d39a00c8"), 1.2, 5.0)
-			_draw_marker_hex(axial_to_pixel(thrust_end), 20.0, Color("d39a0099"), 1.2)
+			draw_dashed_line(axial_to_pixel(cursor_hex), axial_to_pixel(thrust_end), Color("d39a00c8"), 0.7, 4.0)
+			_draw_marker_hex(axial_to_pixel(thrust_end), 20.0, Color("d39a0099"), 0.8)
 			cursor_hex = thrust_end
 
 func _draw_route_arc(from: Vector2, to: Vector2, color: Color) -> void:
@@ -184,7 +188,7 @@ func _draw_route_arc(from: Vector2, to: Vector2, color: Color) -> void:
 	for i in range(17):
 		var t := float(i) / 16.0
 		points.append((1.0 - t) * (1.0 - t) * from + 2.0 * (1.0 - t) * t * control + t * t * to)
-	draw_polyline(points, color, 5.0, true)
+	draw_polyline(points, color, 2.0, true)
 
 func _draw_marker_hex(center: Vector2, radius: float, color: Color, width: float) -> void:
 	# La scansione non contiene esagoni perfettamente regolari: questa è la sagoma misurata sulla griglia stampata.

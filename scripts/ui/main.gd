@@ -114,7 +114,7 @@ func _build_ui() -> void:
 	load_mine_button = Button.new(); load_mine_button.text = "CARICA MINA"; load_mine_button.pressed.connect(_load_lateral_mine); actions_grid.add_child(load_mine_button)
 	counter_yes_button = Button.new(); counter_yes_button.text = "CONTRATTACCA"; counter_yes_button.pressed.connect(_counter.bind(true)); actions_grid.add_child(counter_yes_button)
 	counter_no_button = Button.new(); counter_no_button.text = "RINUNCIA AL CONTRATTACCO"; counter_no_button.pressed.connect(_counter.bind(false)); actions_grid.add_child(counter_no_button)
-	advance_button = Button.new(); advance_button.text = "AVANZA FASE"; advance_button.custom_minimum_size.y = 36; advance_button.pressed.connect(_advance); actions_grid.add_child(advance_button)
+	advance_button = Button.new(); advance_button.text = "AVANZA FASE"; advance_button.custom_minimum_size.y = 44; advance_button.pressed.connect(_advance); panel.add_child(advance_button)
 	var log_section := _make_section(controls_column, "REGISTRO")
 	var log_scroll := ScrollContainer.new(); log_scroll.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED; log_scroll.custom_minimum_size.y = 120; log_section.add_child(log_scroll)
 	log_label = Label.new(); log_label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART; log_label.size_flags_horizontal = Control.SIZE_EXPAND_FILL; log_scroll.add_child(log_label)
@@ -271,7 +271,8 @@ func _refresh() -> void:
 		var display_name: String = ship.name
 		if state.get("scenario", "") == "escape" and ship.owner == "P1" and ship.get("secret_cargo", false) and (state.segment == "P1" or ship.get("inspected", false)): display_name += " · FUGGITIVI"
 		elif state.get("scenario", "") == "escape" and ship.owner == "P1" and ship.get("inspected", false): display_name += " · ESCA"
-		var button := Button.new(); button.text = "%s [%s] · Fuel %s · Vettore (%d,%d) · %s" % [display_name, ship.owner, fuel_text, velocity.x, velocity.y, state_text]; button.tooltip_text = "Spinte pianificate: %d. Corpi visitati: %d." % [planned.size(), ship.visited_bodies.size()]; button.alignment = HORIZONTAL_ALIGNMENT_LEFT; button.text_overrun_behavior = TextServer.OVERRUN_TRIM_ELLIPSIS; button.disabled = ship.owner != state.segment; button.pressed.connect(_select.bind(ship.id)); ships_box.add_child(button)
+		var gravity_count: int = ship.get("pending_gravity", []).size()
+		var button := Button.new(); button.text = "%s [%s] · Fuel %s · Vettore (%d,%d) · Gravità prossima %d · %s" % [display_name, ship.owner, fuel_text, velocity.x, velocity.y, gravity_count, state_text]; button.tooltip_text = "Spinte pianificate: %d. Effetti di gravità al prossimo movimento: %d. Corpi visitati: %d." % [planned.size(), gravity_count, ship.visited_bodies.size()]; button.alignment = HORIZONTAL_ALIGNMENT_LEFT; button.text_overrun_behavior = TextServer.OVERRUN_TRIM_ELLIPSIS; button.disabled = ship.owner != state.segment; button.pressed.connect(_select.bind(ship.id)); ships_box.add_child(button)
 	var entries: Array = state.log.duplicate(); entries.reverse(); log_label.text = "Nessun evento registrato." if entries.is_empty() else "\n\n".join(entries)
 	var selected := _selected()
 	_refresh_target_picker(selected)

@@ -55,6 +55,7 @@ static func move_ship(ship: Dictionary, command: Dictionary, gravity_fields: Arr
 	})
 	next.pending_gravity = []
 	var weak_count_by_body := {}
+	var gravity_encounters: Array = []
 	for hex: Vector2i in path.slice(1):
 		for field: Dictionary in gravity_fields:
 			if field.hex != hex: continue
@@ -63,9 +64,12 @@ static func move_ship(ship: Dictionary, command: Dictionary, gravity_fields: Arr
 				weak_count_by_body[field.body_id] = count + 1
 				if count > 0 or command.get("use_first_weak_gravity", false):
 					next.pending_gravity.append(field.acceleration)
+					gravity_encounters.append({"hex":field.hex, "acceleration":field.acceleration, "body_id":field.body_id})
 			else:
 				next.pending_gravity.append(field.acceleration)
+				gravity_encounters.append({"hex":field.hex, "acceleration":field.acceleration, "body_id":field.body_id})
 				if not field.body_id in next.visited_bodies: next.visited_bodies.append(field.body_id)
+	next.maneuver_history[-1].gravity_encounters = gravity_encounters
 	return next
 
 static func advance_phase(state: Dictionary) -> Dictionary:
@@ -82,6 +86,8 @@ static func advance_phase(state: Dictionary) -> Dictionary:
 				if command.get("takeoff", false): _takeoff(next.ships[i], next.bodies)
 				elif command.has("land_body_id"): _land(next.ships[i], command.land_body_id, next.bodies)
 				else: next.ships[i] = move_ship(next.ships[i], command, next.gravity, next.turn)
+				if not next.ships[i].get("pending_gravity", []).is_empty():
+					next.log.append("%s: %d effetto/i di gravità acquisiti; saranno applicati al prossimo movimento" % [next.ships[i].name, next.ships[i].pending_gravity.size()])
 				_apply_map_and_body_collisions(next.ships[i], next.bodies, next, from_position)
 				_resolve_ram(next, next.ships[i], command, from_position)
 				_apply_planetary_defenses(next, next.ships[i])

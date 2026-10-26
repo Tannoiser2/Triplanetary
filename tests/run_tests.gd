@@ -26,6 +26,7 @@ func _init() -> void:
 	ship.pending_gravity = [Vector2i(-1, 1)]
 	moved = GameRulesRef.move_ship(ship, {}, [], 1)
 	_check(moved.velocity == Vector2i(1, 0), "gravità differita")
+	_check(moved.maneuver_history[0].gravity_steps == [Vector2i(-1, 1)], "gravità pendente applicata e registrata nel movimento successivo")
 	_check(CombatRulesRef.odds_column(5, 3) == 1, "rapporti arrotondati al difensore")
 	_check(CombatRulesRef.gun_damage(4, 2, 6, 0, 3) == "D4", "velocità relativa oltre due")
 	var overloaded: Dictionary = GameRulesRef.move_ship(ship, {"thrust_steps":[Vector2i(1,0),Vector2i(0,1)]}, [], 1)
@@ -34,6 +35,7 @@ func _init() -> void:
 	var weak_ship := ship.duplicate(true); weak_ship.velocity = Vector2i(2,0); weak_ship.pending_gravity = []
 	var weak_result: Dictionary = GameRulesRef.move_ship(weak_ship, {}, weak_fields, 1)
 	_check(weak_result.pending_gravity.size() == 1, "seconda gravità debole consecutiva obbligatoria")
+	_check(weak_result.maneuver_history[0].gravity_encounters.size() == 1, "casella di gravità attraversata conservata per la traccia sulla mappa")
 	weak_result = GameRulesRef.move_ship(weak_ship, {"use_first_weak_gravity":true}, weak_fields, 1)
 	_check(weak_result.pending_gravity.size() == 2, "prima gravità debole opzionale applicata")
 	var state: Dictionary = GrandTourDevRef.create_state(); state.phase = "movement"; state.commands.p1 = {"takeoff":true}
@@ -168,7 +170,7 @@ func _init() -> void:
 	var mine_state: Dictionary = dummy_state.duplicate(true); var mine_ship: Dictionary = mine_state.ships.filter(func(item): return item.owner == "P1" and item.type == "corsair")[0]; var mine_clandestine: Dictionary = mine_state.bodies.filter(func(item): return item.id == "clandestine")[0]
 	mine_state.phase = "resupply"; mine_ship.position = mine_clandestine.hex; mine_ship.velocity = Vector2i.ZERO; mine_ship.inventory.mine = 0; mine_state = Lateral7ScenarioRef.load_mine(mine_state, mine_ship.id)
 	_check(mine_state.ships.filter(func(item): return item.id == mine_ship.id)[0].inventory.mine == 1, "Lateral 7 rende disponibili le mine ai Pirati a Clandestine entro la stiva")
-	if failures == 0: print("OK: 57 test")
+	if failures == 0: print("OK: 59 test")
 	quit(failures)
 
 func _check(value: bool, label: String) -> void:
