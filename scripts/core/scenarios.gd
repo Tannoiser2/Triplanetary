@@ -17,16 +17,21 @@ const CATALOG := [
 		"playable": true, "ai": true,
 		"blurb": "Pirati nascosti fra gli asteroidi, falsi bersagli e un dreadnought di guardia: riusciranno a rapire i passeggeri della nave di linea diretta a Ganimede?",
 		"sides": ["Pirati", "Marina"]},
-	{"id": "nova", "title": "Nova", "year": "", "players": "3", "min": 3, "max": 3, "length": "Breve", "playable": false, "ai": false,
-		"blurb": "EastBloc e WestBloc contro quattro corsari alieni armati di bombe Nova diretti verso il Sole.", "sides": []},
-	{"id": "retribution", "title": "Retribution", "year": "", "players": "2", "min": 2, "max": 2, "length": "Breve", "playable": false, "ai": false,
-		"blurb": "Dieci corvette dei Figli della Libertà, una alla volta, contro gli Enforcers.", "sides": []},
-	{"id": "fleet-mutiny", "title": "The Fleet Mutiny", "year": "", "players": "2", "min": 2, "max": 2, "length": "Breve", "playable": false, "ai": false,
-		"blurb": "Una flotta imperiale di dodici navi: cinque potrebbero ammutinarsi e colpire la Terra.", "sides": []},
-	{"id": "interplanetary-war", "title": "Interplanetary War", "year": "", "players": "2", "min": 2, "max": 2, "length": "Lunga", "playable": false, "ai": false,
-		"blurb": "Guerra economica e militare fra la Terra e le colonie ribelli, in MegaCrediti.", "sides": []},
-	{"id": "prospecting", "title": "Prospecting", "year": "", "players": "2+", "min": 2, "max": 6, "length": "Lunga", "playable": false, "ai": false,
-		"blurb": "Corsa all'oro nella Fascia: minerale, schegge di antimateria e mercati di Ceres e Luna.", "sides": []},
+	{"id": "nova", "title": "Nova", "year": "", "players": "3", "min": 3, "max": 3, "length": "Breve", "playable": true, "ai": true,
+		"blurb": "EastBloc e WestBloc si spartiscono Terra e Luna e comprano 50 punti di flotta; quattro corsari alieni con bombe Nova entrano dal bordo di Giove: se uno entra in orbita attorno al Sole, il sistema è perduto.",
+		"sides": ["WestBloc", "EastBloc", "Alieni"]},
+	{"id": "retribution", "title": "Retribution", "year": "", "players": "2", "min": 2, "max": 2, "length": "Breve", "playable": true, "ai": true,
+		"blurb": "Dieci corvette dei Figli della Libertà, una alla volta: a Clandestine per formare la Flotta della Libertà o in picchiata sulla Terra. Gli Enforcers devono sopravvivere.",
+		"sides": ["Figli della Libertà", "Enforcers"]},
+	{"id": "fleet-mutiny", "title": "The Fleet Mutiny", "year": "", "players": "2", "min": 2, "max": 2, "length": "Breve", "playable": true, "ai": true,
+		"blurb": "L'Impero schiera dodici navi e due basi orbitali; il Ribelle ne designa cinque, che si ammutinano con 5 su 6. Vince chi controlla i lati della Terra.",
+		"sides": ["Impero", "Ribelli"]},
+	{"id": "interplanetary-war", "title": "Interplanetary War", "year": "", "players": "2", "min": 2, "max": 2, "length": "Lunga", "playable": true, "ai": true,
+		"blurb": "La Terra (1600 MCr) contro le colonie ribelli (1000 MCr): flotte, testate nucleari, produzione delle basi e crediti da trasportare. I ribelli vincono devastando tre lati della Terra e uno della Luna.",
+		"sides": ["Terra", "Ribelli"]},
+	{"id": "prospecting", "title": "Prospecting", "year": "", "players": "2–6", "min": 2, "max": 6, "length": "Lunga", "playable": true, "ai": true,
+		"blurb": "Corsa all'oro nella Fascia con 25 MCr a testa: prospetta gli asteroidi a velocità 1, installa miniere automatiche, vendi minerale e schegge CT a Ceres e Luna. Vince il più ricco.",
+		"sides": ["Cercatore", "Cercatore", "Cercatore", "Cercatore", "Cercatore", "Cercatore"]},
 ]
 
 static func info(id: String) -> Dictionary:
@@ -41,6 +46,11 @@ static func create(id: String, seats: Array, options: Dictionary = {}) -> Dictio
 		"grand-tour": _setup_grand_tour(state)
 		"escape": _setup_escape(state)
 		"lateral-7": _setup_lateral7(state)
+		"nova": ScenNova.setup(state)
+		"retribution": ScenRetribution.setup(state)
+		"fleet-mutiny": ScenMutiny.setup(state)
+		"interplanetary-war": ScenWar.setup(state)
+		"prospecting": ScenProspecting.setup(state)
 	Rules._update_detection(state)
 	return state
 
@@ -85,14 +95,16 @@ static func _land(s: Dictionary, map: Dictionary, body_id: String, side: int) ->
 	var b := SolarMap.body(map, body_id)
 	s.pos = b.hex; s.vel = Vector2i.ZERO; s.landed = body_id; s.side = side
 
-static func _orbit(s: Dictionary, map: Dictionary, body_id: String, side: int) -> void:
+static func _orbit(s: Dictionary, map: Dictionary, body_id: String, side: int, ccw := true) -> void:
 	var b := SolarMap.body(map, body_id)
 	var d: Vector2i = Hex.DIRS[side]
+	var step := 1 if ccw else 5
 	s.pos = b.hex + d
-	s.vel = Hex.DIRS[(side + 1) % 6]
+	s.vel = Hex.DIRS[(side + step) % 6]
 	s.grav = [-d]
-	s.history = [{"turn": 0, "from": b.hex + Hex.DIRS[(side + 5) % 6], "to": s.pos, "burns": [], "note": "orbita"}]
-	s.last_path = [b.hex + Hex.DIRS[(side + 5) % 6], s.pos]
+	var prev: Vector2i = b.hex + Hex.DIRS[(side + 6 - step) % 6]
+	s.history = [{"turn": 0, "from": prev, "to": s.pos, "burns": [], "note": "orbita"}]
+	s.last_path = [prev, s.pos]
 	if not s.visited.has(body_id) and b.gravity in ["full", "sol"]: s.visited.append(body_id)
 
 # ---------------------------------------------------------------- Grand Tour
@@ -286,10 +298,91 @@ static func transfer_passengers(state: Dictionary, from_id: String, to_id: Strin
 
 # ---------------------------------------------------------------- ganci chiamati dalle regole
 
-static func player_has_reinforcements(_state: Dictionary, _pid: String) -> bool:
+static func player_has_reinforcements(state: Dictionary, pid: String) -> bool:
+	match state.scenario:
+		"retribution": return ScenRetribution.player_has_reinforcements(state, pid)
+		"interplanetary-war": return ScenWar.player_has_reinforcements(state, pid)
+		"prospecting": return true
 	return false
 
+# ---- passi di preparazione (acquisti, schieramenti, scelte)
+
+static func shop_check(state: Dictionary, item: String) -> String:
+	if state.scenario == "fleet-mutiny": return ScenMutiny.shop_check(state, item)
+	return ""
+
+static func shop_confirm_check(state: Dictionary, st: Dictionary) -> String:
+	match state.scenario:
+		"fleet-mutiny": return ScenMutiny.shop_confirm_check(state, st)
+		"prospecting": return ScenProspecting.shop_confirm_check(state, st)
+	return ""
+
+static func shop_done(state: Dictionary, pid: String, cart: Dictionary, queue: Array, spent: float) -> void:
+	match state.scenario:
+		"nova": ScenNova.shop_done(state, pid, cart, queue, spent)
+		"retribution": ScenRetribution.shop_done(state, pid, cart, queue, spent)
+		"fleet-mutiny": ScenMutiny.shop_done(state, pid, cart, queue, spent)
+		"interplanetary-war": ScenWar.shop_done(state, pid, cart, queue, spent)
+		"prospecting": ScenProspecting.shop_done(state, pid, cart, queue, spent)
+
+## Annulla un acquisto aperto a partita in corso.
+static func cancel_shop(state: Dictionary) -> void:
+	if state.scenario == "interplanetary-war" and state.sd.get("mid", false):
+		state.sd.mid = false
+		state.phase = "resupply"
+		state.setup = {}
+
+static func can_cancel_shop(state: Dictionary) -> bool:
+	return state.scenario == "interplanetary-war" and state.sd.get("mid", false)
+
+static func setup_step_done(state: Dictionary) -> void:
+	match state.scenario:
+		"nova": ScenNova.step_done(state)
+		"retribution": ScenRetribution.step_done(state)
+		"fleet-mutiny": ScenMutiny.step_done(state)
+		"interplanetary-war": ScenWar.step_done(state)
+		"prospecting": ScenProspecting.step_done(state)
+
+static func deploy_score(state: Dictionary, unit: Dictionary, h: Vector2i, spot: Dictionary) -> float:
+	match state.scenario:
+		"nova": return ScenNova.deploy_score(state, unit, h, spot)
+		"retribution": return ScenRetribution.deploy_score(state, unit, h, spot)
+		"fleet-mutiny": return ScenMutiny.deploy_score(state, unit, h, spot)
+		"interplanetary-war": return ScenWar.deploy_score(state, unit, h, spot)
+		"prospecting": return ScenProspecting.deploy_score(state, unit, h, spot)
+	return 0.0
+
+## Scelta da un elenco di opzioni (state.setup.step == "choose").
+static func choose(state: Dictionary, value: Variant) -> String:
+	if state.setup.get("step", "") != "choose": return "Nessuna scelta in corso."
+	match state.scenario:
+		"nova": return ScenNova.choose(state, int(value))
+		"retribution": return ScenRetribution.choose(state, value)
+	return "Scelta non prevista."
+
+static func start_of_segment(state: Dictionary) -> void:
+	if state.scenario == "retribution": ScenRetribution.start_of_segment(state)
+
+static func plot_check(state: Dictionary, s: Dictionary, plot: Dictionary) -> String:
+	if state.scenario == "retribution": return ScenRetribution.plot_check(state, s, plot)
+	return ""
+
+static func on_docked(state: Dictionary, s: Dictionary, b: Dictionary) -> void:
+	match state.scenario:
+		"fleet-mutiny": ScenMutiny.on_docked(state, s, b)
+		"interplanetary-war": ScenWar.on_docked(state, s, b)
+
+static func stock_check(state: Dictionary, s: Dictionary, b: Dictionary, kind: String) -> String:
+	if state.scenario == "interplanetary-war": return ScenWar.stock_check(state, s, b, kind)
+	return ""
+
+static func stock_take(state: Dictionary, s: Dictionary, b: Dictionary, kind: String, n: int) -> void:
+	if state.scenario == "interplanetary-war": ScenWar.stock_take(state, s, b, kind, n)
+
 static func after_movement(state: Dictionary) -> void:
+	match state.scenario:
+		"nova": ScenNova.after_movement(state)
+		"retribution": ScenRetribution.after_movement(state)
 	if state.scenario == "lateral-7":
 		# i falsi bersagli entro la portata dei rilevatori nemici vengono smascherati
 		var map := Rules.map_of(state)
@@ -304,8 +397,8 @@ static func after_movement(state: Dictionary) -> void:
 				d.destroyed = true; d.reason = "smascherato"
 				Rules.log_event(state, "Un falso bersaglio è stato smascherato e rimosso", "detect")
 
-static func after_ship_move(_state: Dictionary, _s: Dictionary) -> void:
-	pass
+static func after_ship_move(state: Dictionary, s: Dictionary) -> void:
+	if state.scenario == "prospecting": ScenProspecting.after_ship_move(state, s)
 
 static func on_first_burn(state: Dictionary, s: Dictionary) -> void:
 	if state.scenario != "lateral-7": return
@@ -342,6 +435,9 @@ static func on_exit_map(state: Dictionary, s: Dictionary, r: Dictionary) -> bool
 	return false
 
 static func on_destroyed(state: Dictionary, s: Dictionary) -> void:
+	match state.scenario:
+		"nova": ScenNova.on_destroyed(state, s)
+		"retribution": ScenRetribution.on_destroyed(state, s)
 	if state.scenario == "lateral-7" and state.sd.get("passengers", "") == s.id:
 		state.sd.passengers_lost = true
 	if state.scenario == "escape" and state.sd.get("captured_by", "") == s.id:
@@ -351,6 +447,10 @@ static func on_resupply(_state: Dictionary, _s: Dictionary, _b: Dictionary) -> v
 	pass
 
 static func end_of_turn(state: Dictionary) -> void:
+	match state.scenario:
+		"retribution": ScenRetribution.end_of_turn(state)
+		"interplanetary-war": ScenWar.end_of_turn(state)
+		"prospecting": ScenProspecting.end_of_turn(state)
 	if state.scenario == "grand-tour" and not state.over:
 		var fin: Array = state.sd.finishers.map(func(id): return Rules.ship(state, id))
 		if not fin.is_empty():
@@ -376,6 +476,10 @@ static func check_victory(state: Dictionary) -> void:
 			if not any_alive: _finish(state, "", "Tutte le corvette sono andate perdute: nessun vincitore.")
 		"escape": _escape_victory(state)
 		"lateral-7": _l7_victory(state)
+		"nova": ScenNova.check_victory(state)
+		"retribution": ScenRetribution.check_victory(state)
+		"fleet-mutiny": ScenMutiny.check_victory(state)
+		"interplanetary-war": ScenWar.check_victory(state)
 
 static func _escape_victory(state: Dictionary) -> void:
 	var fid: String = state.sd.get("fugitive", "")

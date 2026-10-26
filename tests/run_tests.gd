@@ -27,6 +27,9 @@ func _init() -> void:
 	test_ai_grand_tour()
 	test_ai_scenario("escape")
 	test_ai_scenario("lateral-7")
+	test_fleet_shop()
+	test_orbital_base()
+	test_new_scenarios()
 	if failures == 0: print("OK: %d controlli" % count)
 	else: printerr("%d/%d controlli falliti" % [failures, count])
 	quit(1 if failures else 0)
@@ -241,3 +244,58 @@ func test_ai_scenario(id: String) -> void:
 		# il salvataggio deve sopravvivere a qualunque stato raggiunto
 		var back := Persistence.from_json(Persistence.to_json(st))
 		check(not back.is_empty() and back.ships.size() == st.ships.size(), "salvataggio di fine partita %s" % id)
+
+func test_fleet_shop() -> void:
+	var st := Scenarios.create("nova", [{"name": "W"}, {"name": "E"}, {"name": "A"}], {"seed": 4})
+	check(st.phase == "setup" and st.setup.kind == "terra3", "Nova: si parte dalla spartizione della Terra")
+	Scenarios.choose(st, 0)
+	Scenarios.choose(st, 3)
+	Scenarios.choose(st, 0)
+	check(st.setup.step == "shop" and st.setup.budget == 50.0, "Nova: 50 punti per il WestBloc")
+	check(Fleet.price("pts", "liner") == 1.0 and Fleet.price("pts", "transport") == 0.5, "commerciali a metà prezzo")
+	for i in range(5): Fleet.add(st, "frigate")
+	check(Fleet.add(st, "dreadnought") == "Budget insufficiente.", "budget rispettato")
+	Fleet.confirm_shop(st)
+	check(st.setup.step == "deploy" and st.setup.queue.size() == 5, "coda di schieramento")
+	var spots := Fleet.spots(st)
+	check(not spots.is_empty(), "caselle di schieramento disponibili")
+	Fleet.auto_deploy(st)
+	check(st.ships.filter(func(s): return s.owner == "P1").all(func(s): return s.landed != ""), "le navi dei blocchi partono a terra")
+	var terra_bases: Array = st.bases.filter(func(b): return b.body == "terra")
+	check(terra_bases.size() == 6 and terra_bases.filter(func(b): return b.owner == "P2").size() == 3, "tre lati della Terra a testa")
+
+func test_orbital_base() -> void:
+	var st := empty_state()
+	var m := Rules.map_of(st)
+	var b := ShipTypes.make("ob", "P1", "orbital_base")
+	Scenarios._orbit(b, m, "terra", 0)
+	st.ships.append(b)
+	var s := ShipTypes.make("c", "P1", "corvette")
+	Scenarios._orbit(s, m, "terra", 0)
+	s.fuel = 3
+	st.ships.append(s)
+	check(Rules.set_plot(st, "ob", {"burns": [0]}) != "", "una base orbitale non accende motori")
+	var d := Rules.docked_base(st, s)
+	check(d.get("orbital", false), "rotta accoppiata con la base orbitale")
+	st.phase = "resupply"
+	Rules._do_resupply(st)
+	check(int(s.fuel) == 20, "rifornimento dalla base orbitale")
+	for i in range(6):
+		st.phase = "ordnance"; st.seg = 0
+		Rules.end_phase(st)
+	check(Rules.orbit_body(st, b) == "terra" and Rules.alive(b), "la base resta in orbita")
+
+func test_new_scenarios() -> void:
+	for id in ["nova", "retribution", "fleet-mutiny", "interplanetary-war", "prospecting"]:
+		var n := 3 if id == "nova" else 2
+		var seats := []
+		for i in n: seats.append({"name": "IA%d" % i, "type": "ai"})
+		var st := Scenarios.create(id, seats, {"seed": 7, "length": 40})
+		var guard := 0
+		while not st.over and guard < 2500 and int(st.turn) < 120:
+			AI.play_step(st)
+			guard += 1
+		check(st.phase != "setup", "%s: preparazione completata" % id)
+		check(st.over or int(st.turn) >= 40, "%s: la partita procede (giorno %d) %s" % [id, st.turn, st.result])
+		var back := Persistence.from_json(Persistence.to_json(st))
+		check(not back.is_empty() and back.sd.size() == st.sd.size(), "%s: salvataggio" % id)

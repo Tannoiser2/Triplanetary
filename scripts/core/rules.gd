@@ -152,7 +152,12 @@ static func predict(state: Dictionary, s: Dictionary, plot: Dictionary = {}) -> 
 		var b2 := SolarMap.body(map, plot.land_body)
 		return {"dest": b2.hex, "vel": Vector2i.ZERO, "path": [s.pos, b2.hex], "crash": "", "offmap": false, "grav": [], "visits": [], "asteroids": [], "special": false, "land": true}
 	var burns: Array = plot.get("burns", []) if not is_disabled(state, s) else []
-	return simulate(map, s.pos, s.vel, s.grav, burn_vector(burns), plot.get("weak", false), state.asteroids, state.special, s.access_special)
+	return simulate(map, s.pos, s.vel, s.grav, burn_vector(burns), plot.get("weak", false), hazard_rocks(state, s), state.special, s.access_special)
+
+## Esagoni di asteroidi pericolosi per questa nave.
+static func hazard_rocks(state: Dictionary, s: Dictionary) -> Array:
+	if s.access_special and state.rules.get("special_as_asteroids", false): return state.asteroids + state.special
+	return state.asteroids
 
 ## Nave in orbita: ultimo movimento a velocità 1, senza spinta, fra due esagoni di gravità
 ## adiacenti dello stesso corpo. Restituisce l'id del corpo o "".
@@ -179,7 +184,7 @@ static func base_at(state: Dictionary, body_id: String, side: int) -> Dictionary
 
 static func friendly_base(state: Dictionary, b: Dictionary, owner: String) -> bool:
 	if b.is_empty() or not b.active: return false
-	return b.owner == owner or b.owner == "all"
+	return b.owner == owner or b.owner == "all" or b.get("friends", []).has(owner)
 
 ## Lati di atterraggio utilizzabili da una nave in orbita attorno a un corpo.
 static func landing_sides(state: Dictionary, s: Dictionary) -> Array:
@@ -190,7 +195,8 @@ static func landing_sides(state: Dictionary, s: Dictionary) -> Array:
 	if float(body.radius) <= 0.0: return []
 	var sides := []
 	for b in state.bases:
-		if b.body == body_id and int(b.side) >= 0 and friendly_base(state, b, s.owner): sides.append(int(b.side))
+		if b.body != body_id or int(b.side) < 0 or not b.active: continue
+		if friendly_base(state, b, s.owner) or state.rules.get("capture_bases", false): sides.append(int(b.side))
 	# preferisce il lato sotto la nave
 	var facing := Hex.dir_index(s.pos - body.hex)
 	sides.sort_custom(func(x, y): return _side_gap(x, facing) < _side_gap(y, facing))
@@ -218,12 +224,19 @@ static func docked_base(state: Dictionary, s: Dictionary) -> Dictionary:
 			if s.pos == body.hex and s.vel == Vector2i.ZERO: return b
 		elif s.pos == body.hex + Hex.DIRS[int(b.side)] and orbit_body(state, s) == b.body:
 			return b
+	for ob in state.ships:
+		if ob.get("is_base", false) and ob.id != s.id and alive(ob) and ob.pos == s.pos and ob.vel == s.vel and s.landed == "":
+			return {"id": ob.id, "body": "", "side": -1, "owner": ob.owner, "active": true, "fuel": true, "ordnance": true, "orbital": true, "name": ob.name}
 	return {}
+
+static func base_name(state: Dictionary, b: Dictionary) -> String:
+	if b.get("orbital", false): return b.get("name", "base orbitale")
+	return SolarMap.body(map_of(state), b.body).name
 
 # ---------------------------------------------------------------- astrogazione
 
 static func can_plot(state: Dictionary, s: Dictionary) -> bool:
-	return state.phase == "astrogation" and s.owner == current_player(state) and alive(s) and not s.get("dummy", false)
+	return state.phase == "astrogation" and s.owner == current_player(state) and alive(s) and not s.get("dummy", false) and not s.get("is_base", false)
 
 static func can_overload(state: Dictionary, s: Dictionary) -> bool:
 	return not s.commercial and s.overload_ok and (s.infinite_fuel or int(s.fuel) >= 2)
@@ -239,6 +252,7 @@ static func set_plot(state: Dictionary, ship_id: String, plot: Dictionary) -> St
 	if is_disabled(state, s) and (not burns.is_empty() or plot.get("takeoff", false) or int(plot.get("land", -1)) >= 0):
 		return "Nave disabilitata: può solo andare alla deriva."
 	if s.get("locked", false) and not burns.is_empty(): return "Il dreadnought non può muovere finché non viene rilevato un pirata."
+	if s.get("is_base", false) and (not burns.is_empty() or plot.get("takeoff", false)): return "Una base orbitale non ha motori."
 	if burns.size() > 2: return "Al massimo due accelerazioni."
 	if burns.size() == 2 and not can_overload(state, s): return "Sovraccarico non disponibile per questa nave."
 	if not s.infinite_fuel and burns.size() > int(s.fuel): return "Carburante insufficiente."
@@ -247,6 +261,8 @@ static func set_plot(state: Dictionary, ship_id: String, plot: Dictionary) -> St
 		if not sides.has(int(plot.land)): return "Per atterrare serve un'orbita stabile sopra una base utilizzabile."
 		if not s.infinite_fuel and int(s.fuel) < 1: return "Serve 1 punto carburante per atterrare."
 		plot.land_body = orbit_body(state, s)
+	var extra := Scenarios.plot_check(state, s, plot)
+	if extra != "": return extra
 	state.plots[ship_id] = plot.duplicate(true)
 	return ""
 
@@ -263,6 +279,10 @@ static func can_launch(state: Dictionary, s: Dictionary, kind: String) -> String
 	if is_disabled(state, s): return "Nave disabilitata."
 	if int(s.launched_seg) == seg_key(state): return "Un solo ordigno per nave per turno."
 	if kind == "torpedo" and s.commercial: return "Solo le navi da guerra lanciano siluri."
+	if s.get("is_base", false):
+		if kind != "torpedo": return "Una base orbitale lancia solo siluri."
+		if int(s.resupplied_seg) == seg_key(state): return "La base ha rifornito navi in questo turno."
+		return ""
 	var plot: Dictionary = state.plots.get(s.id, {})
 	if kind in ["mine", "nuke"] and plot.get("burns", []).is_empty():
 		return "Dopo il lancio la nave deve cambiare rotta: pianifica una spinta in astrogazione."
@@ -317,7 +337,9 @@ static func _next_segment(state: Dictionary) -> void:
 			Scenarios.end_of_turn(state)
 			if state.over: return
 			state.turn = int(state.turn) + 1
-		if _player_active(state, current_player(state)): return
+		if _player_active(state, current_player(state)):
+			Scenarios.start_of_segment(state)
+			return
 	# nessun giocatore ha più navi in gioco
 	Scenarios.check_victory(state)
 
@@ -377,6 +399,10 @@ static func _move_ship(state: Dictionary, map: Dictionary, s: Dictionary, plot: 
 		s.pos = body2.hex; s.vel = Vector2i.ZERO; s.grav = []
 		s.landed = body2.id; s.side = int(plot.land)
 		log_event(state, "%s atterra su %s" % [s.name, body2.name], "move")
+		var lb := base_at(state, body2.id, s.side)
+		if not lb.is_empty() and lb.owner != s.owner and lb.owner != "all" and state.rules.get("capture_bases", false):
+			lb.owner = s.owner
+			log_event(state, "%s conquista la base di %s (lato %d)" % [player(state, s.owner).name, body2.name, s.side + 1], "combat")
 		_record(state, s, from, body2.hex, [], [from, body2.hex], "atterraggio")
 		Scenarios.on_landed(state, s)
 		return
@@ -392,7 +418,7 @@ static func _move_ship(state: Dictionary, map: Dictionary, s: Dictionary, plot: 
 	if not burns.is_empty() and s.get("first_burn_pending", false):
 		s.first_burn_pending = false
 		Scenarios.on_first_burn(state, s)
-	var r := simulate(map, s.pos, s.vel, s.grav, burn_vector(burns), plot.get("weak", false), state.asteroids, state.special, s.access_special)
+	var r := simulate(map, s.pos, s.vel, s.grav, burn_vector(burns), plot.get("weak", false), hazard_rocks(state, s), state.special, s.access_special)
 	var from2: Vector2i = s.pos
 	s.pos = r.dest; s.vel = r.vel; s.grav = r.grav
 	for v in r.visits:
@@ -401,6 +427,8 @@ static func _move_ship(state: Dictionary, map: Dictionary, s: Dictionary, plot: 
 	if r.crash != "":
 		var b3 := SolarMap.body(map, r.crash)
 		s.pos = r.path[-1]
+		s.crashed_on = r.crash
+		s.crash_disabled = disabled
 		_destroy(state, s, "si schianta su " + b3.name)
 		note = "schianto"
 	elif r.offmap:
@@ -437,7 +465,9 @@ static func _mines_on_course(state: Dictionary, s: Dictionary, path: Array) -> v
 	for o in state.ordnance.duplicate():
 		if o.kind != "mine" or not state.ordnance.has(o): continue
 		if crossed.has(o.pos):
+			state.blame = o.owner
 			_detonate_mine(state, o, o.pos)
+			state.blame = ""
 			if not alive(s): return
 
 static func _try_ram(state: Dictionary, s: Dictionary, target_id: String, from: Vector2i) -> void:
@@ -453,8 +483,11 @@ static func _try_ram(state: Dictionary, s: Dictionary, target_id: String, from: 
 	var res: String = ITEM_TABLE.ram[die - 1]
 	log_event(state, "%s sperona %s: dado %d → %s" % [s.name, t.name, die, _res_text(res)], "combat")
 	fx(state, "ram", t.pos)
+	state.blame = t.owner
 	_apply_damage(state, s, res, "speronamento")
+	state.blame = s.owner
 	_apply_damage(state, t, res, "speronamento")
+	state.blame = ""
 
 static func can_ram(state: Dictionary, s: Dictionary) -> bool:
 	if not state.rules.get("ram", true): return false
@@ -500,6 +533,12 @@ static func _move_ordnance(state: Dictionary, map: Dictionary) -> void:
 
 ## Contatto di un ordigno mentre entra nell'esagono h. Restituisce true se detona.
 static func _ordnance_contact(state: Dictionary, map: Dictionary, o: Dictionary, h: Vector2i, r: Dictionary) -> bool:
+	state.blame = o.owner
+	var hit := _ordnance_contact_inner(state, map, o, h, r)
+	state.blame = ""
+	return hit
+
+static func _ordnance_contact_inner(state: Dictionary, map: Dictionary, o: Dictionary, h: Vector2i, r: Dictionary) -> bool:
 	if r.crash != "" and h == r.path[-1]:
 		var body := SolarMap.body(map, r.crash)
 		if o.kind == "nuke": _nuke_planet(state, map, o, body)
@@ -611,6 +650,7 @@ static func _res_text(res: String) -> String:
 
 static func _destroy(state: Dictionary, s: Dictionary, why: String) -> void:
 	if s.destroyed: return
+	s.killed_by = state.get("blame", "")
 	s.destroyed = true
 	s.reason = why
 	log_event(state, "%s %s" % [s.name, why], "loss")
@@ -631,6 +671,7 @@ static func _apply_damage(state: Dictionary, s: Dictionary, res: String, source:
 		_destroy(state, s, "distrutta: danni cumulativi")
 		return
 	s.disabled_until = until
+	s.disabled_by = state.get("blame", "")
 	fx(state, "hit", s.pos)
 
 # ---------------------------------------------------------------- combattimento
@@ -751,9 +792,12 @@ static func resolve_attack(state: Dictionary, counter_ids: Array, counter_target
 	if not counter.is_empty():
 		log_event(state, "Contrattacco a %s (dado %d, mod %+d): %s" % [counter.odds, counter.die, counter.mod, _res_text(counter.result)], "combat")
 	# i danni sono applicati dopo entrambi i tiri
+	state.blame = attackers[0].owner
 	for t in targets: _apply_damage(state, t, main.result, "fuoco")
 	if not counter.is_empty():
+		state.blame = pa.defender
 		for a in counter_targets: _apply_damage(state, a, counter.result, "contrattacco")
+	state.blame = ""
 	if int(main.column) == 0 and main.result in ["D2", "D3", "D4", "D5", "E"]:
 		for a in attackers:
 			if not a.heroic and alive(a):
@@ -787,13 +831,15 @@ static func _planetary_defense(state: Dictionary) -> void:
 		if not b.active or not b.get("defense", false) or b.owner != me or int(b.side) < 0: continue
 		var body := SolarMap.body(map, b.body)
 		var hex: Vector2i = body.hex + Hex.DIRS[int(b.side)]
-		var enemies: Array = state.ships.filter(func(s): return alive(s) and s.owner != me and s.pos == hex and s.landed == "" and not s.get("dummy", false) and not s.surrendered)
+		var enemies: Array = state.ships.filter(func(s): return alive(s) and s.owner != me and not b.get("friends", []).has(s.owner) and s.pos == hex and s.landed == "" and not s.get("dummy", false) and not s.surrendered)
 		if enemies.is_empty(): continue
 		var die := roll(state)
 		var res: String = GUN_TABLE[2][die - 1]
 		log_event(state, "Difesa planetaria di %s: dado %d → %s" % [body.name, die, _res_text(res)], "combat")
 		fx(state, "flak", hex)
+		state.blame = me
 		for s in enemies: _apply_damage(state, s, res, "difesa planetaria")
+		state.blame = ""
 	Scenarios.check_victory(state)
 
 # ---------------------------------------------------------------- rifornimento
@@ -802,16 +848,22 @@ static func _do_resupply(state: Dictionary) -> void:
 	var me := current_player(state)
 	for s in state.ships:
 		if s.owner != me or not alive(s) or s.get("dummy", false): continue
+		if s.get("is_base", false): continue
 		var b := docked_base(state, s)
+		Scenarios.on_docked(state, s, b)
 		if b.is_empty() or not friendly_base(state, b, s.owner) or not b.get("fuel", true): continue
 		if int(s.fired_seg) == seg_key(state) or int(s.launched_seg) == seg_key(state): continue
+		if b.get("orbital", false):
+			var ob := ship(state, b.id)
+			if int(ob.fired_seg) == seg_key(state) or int(ob.launched_seg) == seg_key(state): continue
+			ob.resupplied_seg = seg_key(state)
 		var refuelled: bool = not s.infinite_fuel and int(s.fuel) < int(s.max_fuel)
 		var maintained: bool = not s.overload_ok and not s.commercial
 		s.fuel = s.max_fuel
 		s.overload_ok = true
 		s.resupplied_seg = seg_key(state)
 		if refuelled or maintained:
-			log_event(state, "%s fa rifornimento e manutenzione a %s" % [s.name, SolarMap.body(map_of(state), b.body).name], "supply")
+			log_event(state, "%s fa rifornimento e manutenzione a %s" % [s.name, base_name(state, b)], "supply")
 		Scenarios.on_resupply(state, s, b)
 
 ## Carico di ordigni in base durante la fase di rifornimento.
@@ -822,6 +874,8 @@ static func can_load(state: Dictionary, s: Dictionary, kind: String) -> String:
 	var b := docked_base(state, s)
 	if b.is_empty() or not friendly_base(state, b, s.owner) or not b.get("ordnance", true): return "Serve una base amica che fornisca ordigni."
 	if b.has("ordnance_kinds") and not b.ordnance_kinds.has(kind): return "Questa base non fornisce questo ordigno."
+	var stock_err := Scenarios.stock_check(state, s, b, kind)
+	if stock_err != "": return stock_err
 	if int(s.fired_seg) == seg_key(state) or int(s.launched_seg) == seg_key(state): return "Chi ha sparato o lanciato in questo turno non può rifornirsi."
 	if not ShipTypes.can_carry(s, kind): return "Stiva insufficiente o carico non ammesso."
 	return ""
@@ -831,6 +885,7 @@ static func load_ordnance(state: Dictionary, ship_id: String, kind: String) -> S
 	var err := can_load(state, s, kind)
 	if err != "": return err
 	s.inv[kind] = int(s.inv[kind]) + 1
+	Scenarios.stock_take(state, s, docked_base(state, s), kind, 1)
 	log_event(state, "%s carica: %s" % [s.name, ShipTypes.ORDNANCE_NAME[kind].to_lower()], "supply")
 	return ""
 
@@ -839,6 +894,7 @@ static func unload_ordnance(state: Dictionary, ship_id: String, kind: String) ->
 	if s.is_empty() or int(s.inv.get(kind, 0)) <= 0: return "Niente da scaricare."
 	if docked_base(state, s).is_empty() or state.phase != "resupply": return "Solo in base durante il rifornimento."
 	s.inv[kind] = int(s.inv[kind]) - 1
+	Scenarios.stock_take(state, s, docked_base(state, s), kind, -1)
 	return ""
 
 static func matched(a: Dictionary, b: Dictionary) -> bool:

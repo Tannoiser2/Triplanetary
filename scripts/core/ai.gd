@@ -46,6 +46,8 @@ static func _setup(state: Dictionary) -> void:
 			Scenarios.choose_fugitive(state, mine[Rules.roll(state) % mine.size()].id)
 		"lateral-7":
 			Scenarios.auto_place(state)
+		_:
+			AIX.setup_step(state)
 
 # ---------------------------------------------------------------- astrogazione
 
@@ -53,7 +55,7 @@ static func plan_astrogation(state: Dictionary) -> void:
 	var me := Rules.current_player(state)
 	if not state.has("ai"): state.ai = {}
 	for s in state.ships:
-		if s.owner != me or not Rules.alive(s) or s.get("dummy", false): continue
+		if s.owner != me or not Rules.alive(s) or s.get("dummy", false) or s.get("is_base", false): continue
 		var plot := _decide(state, s)
 		if OS.has_feature("debug_ai") or state.get("ai_trace", false):
 			var memo: Dictionary = state.ai.get(s.id, {})
@@ -73,7 +75,7 @@ static func _decide(state: Dictionary, s: Dictionary) -> Dictionary:
 		"grand-tour": return _grand_tour(state, s)
 		"escape": return _escape(state, s)
 		"lateral-7": return _lateral7(state, s)
-	return {}
+	return AIX.decide(state, s)
 
 # ---- Grand Tour
 
@@ -302,6 +304,7 @@ static func _search(state: Dictionary, s: Dictionary, goal: Callable, heuristic:
 	var best_h := INF
 	var infinite: bool = s.infinite_fuel
 	var speed_cap := maxi(MAX_SPEED, Hex.length(s.vel + Rules.pending_sum(s)) + 1)
+	var burn_w := 0.6 if state.scenario == "prospecting" else 0.04
 	var expansions := 0
 	while not heap.is_empty() and expansions < budget:
 		var top: Array = _pop(heap)
@@ -325,7 +328,7 @@ static func _search(state: Dictionary, s: Dictionary, goal: Callable, heuristic:
 						if ga.body == gb.body: child.orbit = ga.body
 			var hazard := 0.0
 			if not r.asteroids.is_empty(): hazard = 4.0 * r.asteroids.size()
-			child.cost = float(node.cost) + 1.0 + 0.04 * burns.size() + hazard
+			child.cost = float(node.cost) + 1.0 + burn_w * burns.size() + hazard
 			if Hex.length(r.vel) > speed_cap: continue
 			if goal.call(child, r) and (r.offmap or _survivable(map, state, s, child)):
 				nodes.append(child)
@@ -522,7 +525,7 @@ static func search_exit(state: Dictionary, s: Dictionary, budget: int) -> Dictio
 
 ## Intercetta un bersaglio che si suppone prosegua per inerzia.
 ## mode 1: portarsi a distanza ≤ 1 con velocità relativa ≤ 2 (fuoco); mode 0: accoppiare la rotta.
-static func search_intercept(state: Dictionary, s: Dictionary, t: Dictionary, mode: int, budget: int) -> Dictionary:
+static func search_intercept(state: Dictionary, s: Dictionary, t: Dictionary, mode: int, budget: int, reserve := 0) -> Dictionary:
 	var map := Rules.map_of(state)
 	var track: Array = [{"pos": t.pos, "vel": t.vel}]
 	var pos: Vector2i = t.pos; var vel: Vector2i = t.vel; var grav: Array = t.grav.duplicate()
@@ -549,11 +552,12 @@ static func search_intercept(state: Dictionary, s: Dictionary, t: Dictionary, mo
 		var sv = [0, 2, 3][mode]
 		var rr = [0, 1, 2][mode]
 		return float(h_arrive(n.pos, n.vel + n.g, tp.pos, tp.vel, sv, rr))
-	return _search(state, s, goal, h, budget, 0, false, 1.5)
+	return _search(state, s, goal, h, budget, reserve, false, 1.5)
 
 # ---------------------------------------------------------------- ordigni, combattimento, rifornimento
 
 static func plan_ordnance(state: Dictionary) -> void:
+	AIX.ordnance(state)
 	var me := Rules.current_player(state)
 	for s in state.ships:
 		if s.owner != me or not Rules.alive(s) or s.get("dummy", false): continue
@@ -561,6 +565,7 @@ static func plan_ordnance(state: Dictionary) -> void:
 		var map := Rules.map_of(state)
 		for t in state.ships:
 			if t.owner == me or not Rules.alive(t) or t.landed != "" or t.get("dummy", false) or not Rules.is_known(state, me, t): continue
+			if not AIX.target_ok(state, me, t): continue
 			if Hex.distance(t.pos, s.pos) > 6: continue
 			# prova le dodici accelerazioni di lancio: il siluro deve finire sul bersaglio
 			var t_next := Rules.simulate(map, t.pos, t.vel, t.grav, Vector2i.ZERO, false, [], [], true)
@@ -574,6 +579,7 @@ static func plan_ordnance(state: Dictionary) -> void:
 ## Dichiara un attacco favorevole, se possibile di gruppo.
 ## Restituisce true se un attacco è stato avviato o risolto.
 static func plan_combat(state: Dictionary) -> bool:
+	AIX.combat(state)
 	var me := Rules.current_player(state)
 	var now := Rules.tick(state)
 	var shooters: Array = state.ships.filter(func(s): return s.owner == me and Rules.can_fire(state, s) and int(s.attacked_tick) != now)
@@ -583,6 +589,7 @@ static func plan_combat(state: Dictionary) -> bool:
 	var risk_weight := 1.1 if state.scenario == "grand-tour" else 0.6
 	for t in state.ships:
 		if not Rules.can_be_attacked(state, me, t) or int(t.targeted_tick) == now: continue
+		if not AIX.target_ok(state, me, t): continue
 		# gruppo: tutte le navi che da sole avrebbero almeno una possibilità
 		var group: Array = []
 		for a in shooters:
@@ -625,6 +632,7 @@ static func respond_counter(state: Dictionary) -> void:
 	Rules.resolve_attack(state, cands, att if not cands.is_empty() else [])
 
 static func plan_resupply(state: Dictionary) -> void:
+	AIX.resupply(state)
 	var me := Rules.current_player(state)
 	for s in state.ships:
 		if s.owner != me or not Rules.alive(s) or s.get("dummy", false): continue
