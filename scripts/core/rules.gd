@@ -445,6 +445,10 @@ static func _try_ram(state: Dictionary, s: Dictionary, target_id: String, from: 
 	var t := ship(state, target_id)
 	if t.is_empty() or not alive(t) or t.owner == s.owner or t.landed != "": return
 	if not Hex.passes_center(from, s.pos, t.pos): return
+	if t.get("dummy", false):
+		t.destroyed = true; t.reason = "smascherato"
+		log_event(state, "%s tenta lo speronamento: era un falso bersaglio" % s.name, "detect")
+		return
 	var die := roll(state)
 	var res: String = ITEM_TABLE.ram[die - 1]
 	log_event(state, "%s sperona %s: dado %d → %s" % [s.name, t.name, die, _res_text(res)], "combat")
@@ -462,7 +466,7 @@ static func ram_candidates(state: Dictionary, s: Dictionary, prediction: Diction
 	var out: Array = []
 	if not can_ram(state, s) or prediction.get("crash", "") != "": return out
 	for t in state.ships:
-		if not alive(t) or t.owner == s.owner or t.landed != "" or t.get("dummy", false): continue
+		if not alive(t) or t.owner == s.owner or t.landed != "": continue
 		if t.pos != s.pos and Hex.passes_center(s.pos, prediction.dest, t.pos): out.append(t.id)
 	return out
 
@@ -817,6 +821,7 @@ static func can_load(state: Dictionary, s: Dictionary, kind: String) -> String:
 	if kind == "nuke" and not state.rules.get("nukes", false): return "Testate nucleari non disponibili."
 	var b := docked_base(state, s)
 	if b.is_empty() or not friendly_base(state, b, s.owner) or not b.get("ordnance", true): return "Serve una base amica che fornisca ordigni."
+	if b.has("ordnance_kinds") and not b.ordnance_kinds.has(kind): return "Questa base non fornisce questo ordigno."
 	if int(s.fired_seg) == seg_key(state) or int(s.launched_seg) == seg_key(state): return "Chi ha sparato o lanciato in questo turno non può rifornirsi."
 	if not ShipTypes.can_carry(s, kind): return "Stiva insufficiente o carico non ammesso."
 	return ""

@@ -1,55 +1,29 @@
-# Stato implementazione
+# Stato del progetto
 
-Aggiornato al 26 ottobre 2026.
+Aggiornato al 26 ottobre 2026 — riscrittura completa del motore e dell'interfaccia.
 
-## Implementato e verificato
+## Funziona
 
-- Progetto Godot 4 e export Web single-threaded compatibile con GitHub Pages.
-- Hot-seat a due giocatori e sequenza delle cinque fasi.
-- Coordinate assiali, inerzia, una spinta per turno e consumo carburante.
-- Sovraccarico da due accelerazioni, solo per nave militare, una volta tra manutenzioni.
-- Gravità applicata al turno seguente e cumulativa.
-- Gravità debole: prima freccia opzionale, seconda consecutiva obbligatoria.
-- Tracciato supercover per intercettare passaggi lungo bordi esagonali.
-- Partenza atterrata, booster di decollo, obbligo di accelerare dopo il decollo e ricaduta.
-- Atterraggio da esagono orbitale a velocità uno, con costo di carburante.
-- Collisione attraversando un corpo e distruzione uscendo dalla mappa.
-- Visite Grand Tour, rifornimento alle quattro basi previste e condizione di vittoria.
-- Salvataggio/caricamento locale e autosave a ogni avanzamento di fase.
-- Tabella base del fuoco e RNG/risoluzione deterministica del motore.
-- Attacco nave contro nave, scelta del contrattacco con passaggio di mano, distanza minima, velocità relativa, eroismo e applicazione simultanea dei risultati.
-- Disabilitazioni cumulative e distruzione a sei turni residui.
-- Mine, siluri e testate nucleari come entità vettoriali: inventario, massa, lancio, gravità, contatti ed eliminazione dopo cinque movimenti.
-- Campi di asteroidi, rischio deterministico, asteroidi speciali e rimozione tramite testata nucleare.
-- Regole motore per carico, capienza, trasferimento di materiali e carburante fra navi sulla stessa rotta.
-- Rilevamento persistente da navi e basi, occultamento dopo l'atterraggio in una base amica e blocco del fuoco contro bersagli non rilevati.
-- Schermata di passaggio hot-seat al cambio giocatore e prima della scelta riservata del contrattacco.
-- Menu iniziale blu-verde/rosso con catalogo descrittivo degli otto scenari e sei posti configurabili per nome e tipo (umano, IA o nessuno); Grand Tour, Escape e Lateral 7 sono abilitati in hot-seat umano.
-- Escape include setup canonico, identità segreta dei fuggitivi, bersaglio selezionabile, ispezione/cattura, speronamento, fuga oltre Giove e livelli di vittoria.
-- Lateral 7 include collocazione manuale nella Fascia, segnalini coperti, rimozione scelta dei dummy, sblocco del dreadnought tramite rilevamento, dotazioni, passeggeri, Clandestine e vittoria dedicata.
-- Le difese planetarie attive risolvono automaticamente il fuoco 2:1 senza modificatori.
-- Plancia pubblica ridisegnata in stile astronomico scuro, anteprima tratteggiata del movimento e rotta percorsa persistente per ogni nave.
-- Plancia navigabile con zoom alla posizione del puntatore e trascinamento; legenda sempre visibile.
-- Vettore inerziale azzurro tratteggiato, spinta gialla più fine con marcatore esagonale e rotta effettiva continua, spessa e incurvata tra gli esagoni.
-- Pannello laterale separato in Stato e navi, Vettore e spinta, Azioni e Registro; elenchi e log hanno scorrimento indipendente.
-- Guida “Come si gioca” e suggerimento contestuale per ciascuna fase.
-- Salvataggio portabile JSON tramite appunti, con import e preservazione dei vettori esagonali.
-- Basi planetarie come entità dati e rifornimento solo dopo un atterraggio valido; fondazione del motore per basi orbitali/asteroidali e difese.
-- Selezione esplicita di direzione e accelerazione 1/2 per il lancio dei siluri.
-- Scheda e copertina originale per l'inclusione automatica nella Ludoteca Virtuale.
-- Replay navigabile per fotogrammi, con stato delle navi e ultimo evento.
-- Cataloghi dati separati e verificati per otto scenari, navi, equipaggiamento, costi e capacità dell'Updated Second Edition.
-- Grand Tour configurabile da 2 a 6 giocatori.
-- 52 test headless.
+- Plancia trascritta e verificata visivamente sovrapponendo i dati alla mappa sorgente (`tools/verify` nel processo di `build_map.py`).
+- Tutte le regole di movimento, combattimento, ordigni, pericoli, basi, rifornimento, rilevamento, trasferimenti e resa del manuale.
+- Scenari **Grand Tour**, **Escape**, **Lateral 7** con condizioni di vittoria complete (livelli decisivo/marginale/morale).
+- IA per tutti e tre gli scenari e per tutte le parti (piloti, Pellegrini, Enforcers, Pirati, Marina).
+- Hot-seat, schermata di passaggio, salvataggi, export Web.
+- 68 controlli automatici in `tests/run_tests.gd`, comprese partite complete IA contro IA.
 
-## Ancora incompleto
+## Scelte interpretative
 
-- Revisione manuale finale della trascrizione di ogni esagono della mappa, degli asteroidi, delle basi e dei detector.
-- Collisione sub-esagono con il disco grafico anziché con l'intero esagono centrale.
-- Attacchi combinati con più navi, ramming e selezione multipla dei bersagli.
-- Interfaccia completa per carico e trasferimenti (le regole di motore sono presenti).
-- Basi orbitali, resa e cattura generale fuori dalle regole specifiche di Escape.
-- Dummy e identità segrete al di fuori di Lateral 7/Escape.
-- Gli altri cinque scenari.
+- **Sol**: la mappa A4 usata ha un doppio anello di frecce attorno al Sole (frecce doppie nell'anello interno, coppie divergenti sui lati dell'anello esterno). È il comportamento predefinito; l'opzione *Sol classico* nel menu ripristina un solo anello come nella plancia GDW originale.
+- **Gravità condivisa**: dove due corpi si toccano (Giove/Io) l'esagono applica entrambe le frecce.
+- **Grand Tour**: i corpi a gravità piena sono Sol, Mercurio, Venere, Terra, Marte, Giove, Ganimede e Callisto. Le basi senza carburante (Mercurio, Luna, Io, Ganimede, Ceres, Clandestine) offrono comunque il booster. In caso di arrivo nello stesso giorno vince chi ha consumato meno carburante; a parità, ex aequo.
+- **Escape**: "oltre Giove" è il bordo destro della plancia. I Pellegrini possono decollare dalla Terra anche se la base è degli Enforcers (il testo dice che possono partire "in qualunque modo").
+- **Lateral 7**: Venere ha solo un porto civile (booster per la nave di linea, nessun rifornimento); "raggiunge Ganimede" = attraversa un esagono di gravità di Ganimede. I falsi bersagli entro la portata dei rilevatori nemici vengono smascherati.
+- **Contrattacco**: colonna e modificatori sono ricalcolati per il contrattacco; i danni di attacco e contrattacco si applicano insieme.
+- **Penalità di velocità relativa**: −1 per ogni punto oltre 2 (testo normativo), anche se l'esempio della figura 8b del manuale è incoerente.
 
-La build pubblica non include la scansione della plancia. La modalità locale può caricarla da `assets/local-reference/map-source.jpg`.
+## Da fare
+
+- Scenari *Nova*, *Retribution*, *The Fleet Mutiny*, *Interplanetary War*, *Prospecting* (economia, acquisti, colonie, basi orbitali).
+- Multiplayer online su Firebase come negli altri giochi della ludoteca.
+- Basi orbitali come entità mobili.
+- Variante "rotta obbligata" del Grand Tour.

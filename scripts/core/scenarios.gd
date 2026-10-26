@@ -181,8 +181,10 @@ static func _setup_lateral7(state: Dictionary) -> void:
 	state.rules.hidden = true
 	state.rules.surrender = true
 	_add_bases(state, ["mars", "terra", "callisto"], "P2")
-	_add_bases(state, ["venus"], "all", {"defense": false})
-	_add_bases(state, ["clandestine"], "P1", {"ordnance": true})
+	# porto civile di Venere: solo il booster per la nave di linea, niente rifornimenti
+	_add_bases(state, ["venus"], "P2", {"defense": false, "fuel": false, "ordnance": false})
+	# Clandestine: carburante, manutenzione e solo mine per i pirati
+	_add_bases(state, ["clandestine"], "P1", {"ordnance_kinds": ["mine"]})
 	var liner := ShipTypes.make("l7-liner", "P2", "liner", "Nave di linea Lateral 7")
 	_land(liner, map, "terra" if state.options.get("liner_terra", false) else "venus", 0)
 	liner.passengers = true

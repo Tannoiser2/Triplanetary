@@ -217,7 +217,16 @@ static func _lateral7(state: Dictionary, s: Dictionary) -> Dictionary:
 		# attende la partenza della nave di linea restando immobile fra gli asteroidi
 		return {}
 	var match_needed: bool = holder2.owner == "P2" and (Rules.is_disabled(state, holder2) or holder2.surrendered)
-	var pi := search_intercept(state, s, holder2, 0 if match_needed else 1, 1800)
+	var pi := search_intercept(state, s, holder2, 0 if match_needed else 2, 2200)
+	if not pi.is_empty() and not pi.get("partial", false):
+		return {"burns": pi.burns[0], "dummies": []}
+	# imboscata: la nave di linea deve passare da Ganimede, i pirati la aspettano in orbita
+	var amb := _cached_or_plan(state, s, "orbit:ganymede", func(): return search_orbit(state, s, "ganymede", 2, 2500))
+	if Rules.orbit_body(state, s) == "ganymede": return {"burns": [], "dummies": []}
+	if not amb.is_empty():
+		var pl := _follow(state, s, amb)
+		pl.dummies = []
+		return pl
 	if pi.is_empty(): return _drift_safe(state, s)
 	return {"burns": pi.burns[0], "dummies": []}
 
@@ -525,15 +534,20 @@ static func search_intercept(state: Dictionary, s: Dictionary, t: Dictionary, mo
 			track.append({"pos": pos, "vel": vel})
 			if r.crash != "" or r.offmap: break
 	var last := track.size() - 1
+	# il bersaglio è fermo durante il nostro segmento: dopo k nostre mosse ha mosso k-1 volte
 	var goal := func(n: Dictionary, r: Dictionary) -> bool:
 		if r.offmap: return false
-		var k: int = mini(int(n.turns), last)
-		var tp: Dictionary = track[k]
+		var tp: Dictionary = track[clampi(int(n.turns) - 1, 0, last)]
 		if mode == 0: return n.pos == tp.pos and n.vel == tp.vel
-		return Hex.distance(n.pos, tp.pos) <= 1 and Hex.distance(n.vel, tp.vel) <= 2
+		var reach := 999
+		for hh in r.path: reach = mini(reach, Hex.distance(hh, tp.pos))
+		if mode == 2: return reach <= 2 and Hex.distance(n.vel, tp.vel) <= 3
+		return reach <= 1 and Hex.distance(n.vel, tp.vel) <= 2
 	var h := func(n: Dictionary) -> float:
-		var tp: Dictionary = track[mini(int(n.turns), last)]
-		return float(h_arrive(n.pos, n.vel + n.g, tp.pos, tp.vel, 0 if mode == 0 else 2, 0 if mode == 0 else 1))
+		var tp: Dictionary = track[clampi(int(n.turns), 0, last)]
+		var sv = [0, 2, 3][mode]
+		var rr = [0, 1, 2][mode]
+		return float(h_arrive(n.pos, n.vel + n.g, tp.pos, tp.vel, sv, rr))
 	return _search(state, s, goal, h, budget, 0, false, 1.5)
 
 # ---------------------------------------------------------------- ordigni, combattimento, rifornimento
@@ -556,37 +570,50 @@ static func plan_ordnance(state: Dictionary) -> void:
 					if r.path.has(t.pos) or r.dest == t_next.dest:
 						if Rules.launch(state, s.id, "torpedo", burns) == "": return
 
-## Dichiara un attacco favorevole. Restituisce true se un attacco è stato avviato o risolto.
+## Dichiara un attacco favorevole, se possibile di gruppo.
+## Restituisce true se un attacco è stato avviato o risolto.
 static func plan_combat(state: Dictionary) -> bool:
 	var me := Rules.current_player(state)
 	var now := Rules.tick(state)
 	var shooters: Array = state.ships.filter(func(s): return s.owner == me and Rules.can_fire(state, s) and int(s.attacked_tick) != now)
+	if shooters.is_empty(): return false
 	var best := {}
 	var best_score := 0.0
-	for a in shooters:
-		for t in state.ships:
-			if not Rules.can_be_attacked(state, me, t) or int(t.targeted_tick) == now: continue
-			var p := Rules.attack_preview(state, [a], [t])
+	var risk_weight := 1.1 if state.scenario == "grand-tour" else 0.6
+	for t in state.ships:
+		if not Rules.can_be_attacked(state, me, t) or int(t.targeted_tick) == now: continue
+		# gruppo: tutte le navi che da sole avrebbero almeno una possibilità
+		var group: Array = []
+		for a in shooters:
+			var p1 := Rules.attack_preview(state, [a], [t])
+			if int(p1.column) >= 0 and _chance(p1) > 0.0: group.append(a)
+		if group.is_empty(): continue
+		var candidates: Array = [group]
+		for a2 in group:
+			if group.size() > 1: candidates.append([a2])
+		for g in candidates:
+			var p := Rules.attack_preview(state, g, [t])
 			if int(p.column) < 0: continue
-			var hit := 0.0
-			for res in p.chances:
-				if res != "-": hit += float(p.chances[res]) / 6.0
+			var hit := _chance(p)
 			var risk := 0.0
 			if not t.commercial:
-				var back := Rules.attack_preview(state, [t], [a])
-				if int(back.column) >= 0:
-					for res2 in back.chances:
-						if res2 != "-": risk += float(back.chances[res2]) / 6.0
-			var risk_weight := 1.1 if state.scenario == "grand-tour" else 0.6
-			var score := hit - risk_weight * risk + (0.0 if state.scenario == "grand-tour" else 0.3)
-			if state.scenario == "lateral-7" and t.get("passengers", false): score = hit - 0.2 * risk
+				var back := Rules.attack_preview(state, [t], g)
+				if int(back.column) >= 0: risk = _chance(back)
+			var score = hit - risk_weight * risk + (0.0 if state.scenario == "grand-tour" else 0.3) - 0.05 * g.size()
+			if t.get("passengers", false): score = hit - 0.2 * risk
 			if hit >= 0.3 and score > best_score:
 				best_score = score
-				best = {"a": a.id, "t": t.id}
+				best = {"a": g.map(func(x): return x.id), "t": t.id}
 	if best.is_empty(): return false
-	if Rules.declare_attack(state, [best.a], [best.t]) != "": return false
+	if Rules.declare_attack(state, best.a, [best.t]) != "": return false
 	if Rules.player(state, state.pending_attack.defender).type == "ai": respond_counter(state)
 	return true
+
+static func _chance(p: Dictionary) -> float:
+	var hit := 0.0
+	for res in p.chances:
+		if res != "-": hit += float(p.chances[res]) / 6.0
+	return hit
 
 static func respond_counter(state: Dictionary) -> void:
 	var cands := Rules.counter_candidates(state)

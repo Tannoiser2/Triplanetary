@@ -1,56 +1,54 @@
-# Triplanetary Digital - pacchetto di sviluppo
+# Triplanetary — versione digitale
 
-Prototipo locale e specifiche italiane per una versione digitale fedele all'**Updated Second Edition** di *Triplanetary*. Il repository separa regole, dati, simulazione e rendering; non contiene copie degli asset allegati né materiale grafico proprietario.
+Versione digitale per uso personale di *Triplanetary* (Game Designers' Workshop, 1973/1981, regole **Updated Second Edition**), realizzata in **Godot 4.7** e pubblicata su GitHub Pages per la Ludoteca Virtuale.
 
-## Stato
+**Gioca:** <https://tannoiser2.github.io/Triplanetary/>
 
-- Motore GDScript: coordinate esagonali assiali, inerzia, spinta, carburante, gravità piena e debole differita, sovraccarico, decollo/atterraggio, collisioni e tabella di combattimento.
-- Prototipo Godot hot-seat multigiocatore con sequenza di fasi, rendering procedurale e registro eventi.
-- Menu iniziale nella palette della copertina, scenari a schede descrittive, sei posti equipaggio configurabili, guida integrata, plancia con zoom/scorrimento, vettore e spinta distinti, e traccia curva permanente dei movimenti.
-- Scenari giocabili: Grand Tour, Escape e Lateral 7; Escape include identità segreta, scelta del bersaglio, ispezione/cattura, speronamento e livelli di vittoria.
-- Lateral 7 giocabile con collocazione manuale nella Fascia, dummy coperti, rilevamento, trasferimento dei passeggeri e condizioni di vittoria dedicate.
-- Scenario `Grand Tour` giocabile sulla **development map**, con partenza atterrata, visite, rifornimento, ritorno e vittoria. La trascrizione completa della plancia deve ancora essere verificata.
-- Salvataggio/caricamento locale, autosave, replay a fotogrammi e scambio di salvataggi JSON dagli appunti. Sono operativi combattimento 1v1, contrattacco, danni, ordigni vettoriali, asteroidi, rilevamento, privacy hot-seat, basi planetarie e regole di carico/trasferimento. Attacchi combinati, interfaccia logistica completa e i sette scenari successivi restano nel backlog e non vengono presentati come giocabili.
-- Lo stato preciso, senza sovrastimare la completezza, è in `STATUS.md`.
+## Cosa c'è
 
-## Avvio
+- **Plancia fedele**: la mappa A4 di riferimento è stata trascritta esagono per esagono (2277 esagoni, 13 corpi, 77 esagoni di gravità, 67 asteroidi, 7 asteroidi speciali, basi sui lati dei pianeti) in `data/map.json`, e viene ridisegnata in modo procedurale: cielo stellato, Sole luminoso, pianeti illuminati da sinistra, frecce di gravità piene e vuote.
+- **Movimento vettoriale completo**: inerzia, spinte da 1 carburante, sovraccarico delle navi da guerra, gravità acquisita e applicata al turno dopo, gravità debole (prima freccia facoltativa, seconda consecutiva obbligatoria), orbite stabili, atterraggio da orbita, decollo con booster e ricaduta, schianti calcolati sulla geometria del disco e non sull'intero esagono, uscita dalla plancia.
+- **Combattimento**: attacchi di gruppo contro navi nello stesso esagono, colonne 1:2–4:1 arrotondate a favore del difensore, distanza minima dalla rotta, velocità relativa, eroismo, contrattacco prima dell'applicazione dei danni, disabilitazione cumulativa con distruzione a 6 turni, difese planetarie, speronamento.
+- **Ordigni e pericoli**: mine, siluri (accelerazione 1–2 al lancio), testate nucleari, durata 5 turni, detonazioni contro navi, corpi, asteroidi e altri ordigni; asteroidi e asteroidi speciali di Clandestine.
+- **Basi, rifornimento e rilevamento**: rifornimento a terra o in orbita sopra la base, manutenzione, carico degli ordigni, ispezione, trasferimenti con rotta accoppiata, resa, rilevatori a 3/5 esagoni con informazione nascosta.
+- **Scenari giocabili**: *Grand Tour* (2–6 piloti), *Escape*, *Lateral 7*. Gli altri cinque scenari del manuale sono nel catalogo ma non ancora giocabili.
+- **Avversario IA**: pianifica le rotte con una ricerca A* sugli stati vettoriali (posizione, velocità, gravità in sospeso), gestisce carburante e rifornimenti, intercetta, combatte, ispeziona. Non sbircia le informazioni nascoste.
+- **Hot-seat** con schermata di passaggio negli scenari con informazioni nascoste, salvataggio automatico, slot manuale e salvataggio portabile negli appunti.
 
-Richiede Godot 4.3 o successivo.
+## Comandi
 
-Aprire `project.godot` nell'editor e premere **F6/F5**, oppure:
+| Azione | Mouse / tastiera |
+|---|---|
+| Selezionare una nave | clic sulla pedina o sulla scheda della flotta, `Tab` per la successiva |
+| Spinta | clic su uno dei sei esagoni azzurri attorno al punto d'arrivo (`1`–`6`) |
+| Deriva | clic sull'esagono centrale o `Spazio` |
+| Sovraccarico | dopo la prima spinta, clic su un esagono arancio |
+| Confermare la fase | pulsante arancio in basso o `Invio` |
+| Zoom / spostamento | rotella / trascinamento, `F` per vedere tutta la plancia |
+| Annullare la selezione | clic destro o `Esc` |
 
-Build di produzione:
+La guida completa è nel pulsante **GUIDA** del gioco.
+
+## Sviluppo
 
 ```bash
-godot --path . --editor
-godot --headless --path . --script tests/run_tests.gd
-```
-
-L'export browser usa il preset `Web`, single-threaded per essere compatibile con GitHub Pages:
-
-```bash
+godot --path . --editor                                  # editor
+godot --headless --path . --script tests/run_tests.gd    # 68 controlli del motore e dell'IA
 godot --headless --path . --export-release Web docs/index.html
 ```
 
-La workflow `.github/workflows/pages.yml` pubblica la cartella `docs/` a ogni push su `main`. La cartella `ludoteca/` espone una scheda autonoma alla [Ludoteca Virtuale](https://tannoiser2.github.io/) e contiene solo grafica originale del progetto.
+La workflow `.github/workflows/pages.yml` pubblica la cartella `docs/` a ogni push su `main`.
 
-## Ordine di lettura per Codex
+```text
+scripts/core/   regole pure e deterministiche: geometria, mappa, regole, scenari, IA, salvataggi
+scripts/ui/     plancia, interfaccia, grafica procedurale, widget
+data/map.json   plancia trascritta (generata da tools/build_map.py)
+tools/          trascrizione della mappa e mappa sorgente di riferimento (escluse dalla build)
+ludoteca/       scheda e copertina per la Ludoteca Virtuale
+```
 
-1. `RULES_IT.md`: regole normalizzate e questioni aperte.
-2. `SPEC.md`: comportamento verificabile del gioco digitale.
-3. `ARCHITECTURE.md`: confini del motore e modello degli eventi.
-4. `SCENARIOS.md`: dati e condizioni degli scenari.
-5. `ASSET_MANIFEST.md`: provenienza, diritti e trattamento degli allegati.
-6. `TEST_PLAN.md`: matrice di verifica.
-7. `CODEX_TASKS.md`: istruzioni eseguibili e backlog incrementale.
-
-## Principi di fedeltà
-
-- La fonte normativa primaria è il manuale “Updated Second Edition”, copyright 1973/1981 GDW.
-- La scansione storica viene usata per confronto; il saggio di Brian McCue è analisi, non regola.
-- Una contraddizione non viene silenziosamente corretta: viene marcata `TODO-RULE` e coperta da un'opzione di compatibilità quando necessario.
-- Dadi e scelte sono eventi registrati; lo stesso seed e lo stesso flusso di comandi producono lo stesso replay.
+Il motore non dipende dalla scena: tutto lo stato è un dizionario serializzabile e ogni tiro di dado passa per il generatore nello stato, così una partita è riproducibile dallo stesso seme.
 
 ## Diritti
 
-Il codice e i documenti di progetto qui creati non concedono diritti sul gioco o sugli asset originali. Prima di distribuire una build pubblica occorre ottenere l'autorizzazione del titolare dei diritti o sostituire mappa, pedine, testo e marchi con contenuti originali autorizzati. Vedere `ASSET_MANIFEST.md`.
+Codice e grafica procedurale sono originali. *Triplanetary*, il manuale e i materiali di riferimento appartengono ai rispettivi titolari; la copertina è usata per uso personale non commerciale. Font sotto licenza SIL OFL. Vedi `ASSET_MANIFEST.md` e `NOTICE.md`.

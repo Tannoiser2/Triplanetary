@@ -25,6 +25,8 @@ func _init() -> void:
 	test_escape()
 	test_lateral7()
 	test_ai_grand_tour()
+	test_ai_scenario("escape")
+	test_ai_scenario("lateral-7")
 	if failures == 0: print("OK: %d controlli" % count)
 	else: printerr("%d/%d controlli falliti" % [failures, count])
 	quit(1 if failures else 0)
@@ -227,3 +229,15 @@ func test_ai_grand_tour() -> void:
 		guard += 1
 	check(st.over, "partita IA contro IA conclusa (giorno %d)" % st.turn)
 	check(st.winner in ["P1", "P2", "pari"], "c'è un vincitore: %s" % st.result)
+
+func test_ai_scenario(id: String) -> void:
+	for seed in [21, 22]:
+		var st := Scenarios.create(id, [{"name": "A", "type": "ai"}, {"name": "B", "type": "ai"}], {"seed": seed})
+		var guard := 0
+		while not st.over and guard < 3000:
+			AI.play_step(st)
+			guard += 1
+		check(st.over, "%s IA contro IA conclusa (seme %d, giorno %d): %s" % [id, seed, st.turn, st.result])
+		# il salvataggio deve sopravvivere a qualunque stato raggiunto
+		var back := Persistence.from_json(Persistence.to_json(st))
+		check(not back.is_empty() and back.ships.size() == st.ships.size(), "salvataggio di fine partita %s" % id)
