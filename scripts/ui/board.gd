@@ -5,11 +5,11 @@ signal hex_clicked(hex: Vector2i)
 
 var state: Dictionary
 var selected_ship := "p1"
-const MAP_SIZE := Vector2(2048, 1447)
-const HEX_X := 30.0
+const MAP_SIZE := Vector2(2394.36, 1447)
+const HEX_X := 35.0740289
 const HEX_Y := 40.5
-const ORIGIN := Vector2(15.5, 34.5)
-const HEX_HALF_WIDTH := 20.0
+const ORIGIN := Vector2(18.12158, 34.5)
+const HEX_HALF_WIDTH := 23.382686
 const PLAYER_COLORS := [Color("59d6c7"), Color("ff6f76"), Color("f4c95d"), Color("9b8cff"), Color("ff9f43"), Color("74b9ff")]
 var map_texture: Texture2D
 var camera_zoom := 1.0

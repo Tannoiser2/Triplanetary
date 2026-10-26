@@ -117,13 +117,14 @@ func _init() -> void:
 	_check(two_player.ships[1].position == p2_from + Vector2i(1,0) and two_player.ships[0].position != two_player.ships[1].position, "il secondo giocatore esegue la propria spinta")
 	var board := BoardRef.new(); board.size = Vector2(800, 600); var old_zoom: float = board.camera_zoom; board._zoom_at(Vector2(400,300), 1.18)
 	_check(board.camera_zoom > old_zoom, "zoom plancia mantiene un livello navigabile")
-	_check(board.axial_to_pixel(board._offset_to_axial(24, 22)) == Vector2(735.5, 925.5), "griglia logica calibrata sui centri della scansione")
+	_check(board.axial_to_pixel(board._offset_to_axial(24, 22)).distance_to(Vector2(859.8983, 925.5)) < 0.05, "griglia logica calibrata sulla scansione corretta")
+	_check(is_equal_approx(BoardRef.HEX_X / BoardRef.HEX_Y, sqrt(3.0) / 2.0), "esagoni della plancia corretti a proporzioni regolari")
 	board.free()
 	var main_ui := MainRef.new(); main_ui._ready()
 	var game_root: Control = main_ui.get_child(0); var game_split: HSplitContainer = game_root.get_child(1); var game_panel: VBoxContainer = game_split.get_child(1)
 	_check(game_panel.get_children().all(func(item): return not item is ScrollContainer), "pannello partita privo di finestre scorrevoli")
 	_check(game_panel.get_combined_minimum_size().y <= 652.0, "tutti i blocchi del pannello rientrano nell'altezza di gioco")
-	_check(is_equal_approx(ThrustSelectorRef.DIRECTIONS[0].y / ThrustSelectorRef.DIRECTIONS[0].x, 20.25 / 30.0), "frecce diagonali allineate ai centri reali della griglia")
+	_check(is_equal_approx(ThrustSelectorRef.DIRECTIONS[0].y / ThrustSelectorRef.DIRECTIONS[0].x, 1.0 / sqrt(3.0)), "frecce diagonali allineate alla griglia regolare")
 	main_ui.state = GrandTourDevRef.create_state(["Ada", "Bruno"]); main_ui.state.phase = "resupply"; main_ui._refresh(); main_ui._advance()
 	_check(main_ui.state.segment == "P2" and main_ui.board.selected_ship == "p2", "interfaccia seleziona P2 prima di ridisegnare il nuovo segmento")
 	main_ui.queue_free()
@@ -175,7 +176,7 @@ func _init() -> void:
 	var mine_state: Dictionary = dummy_state.duplicate(true); var mine_ship: Dictionary = mine_state.ships.filter(func(item): return item.owner == "P1" and item.type == "corsair")[0]; var mine_clandestine: Dictionary = mine_state.bodies.filter(func(item): return item.id == "clandestine")[0]
 	mine_state.phase = "resupply"; mine_ship.position = mine_clandestine.hex; mine_ship.velocity = Vector2i.ZERO; mine_ship.inventory.mine = 0; mine_state = Lateral7ScenarioRef.load_mine(mine_state, mine_ship.id)
 	_check(mine_state.ships.filter(func(item): return item.id == mine_ship.id)[0].inventory.mine == 1, "Lateral 7 rende disponibili le mine ai Pirati a Clandestine entro la stiva")
-	if failures == 0: print("OK: 62 test")
+	if failures == 0: print("OK: 63 test")
 	quit(failures)
 
 func _check(value: bool, label: String) -> void:

@@ -4,7 +4,7 @@ extends Control
 signal direction_selected(direction: int)
 
 # Stesso ordine delle sei direzioni assiali del motore, proiettate sulla griglia della scansione.
-const DIRECTIONS: Array[Vector2] = [Vector2(0.82885, 0.55947), Vector2(0.82885, -0.55947), Vector2(0, -1), Vector2(-0.82885, -0.55947), Vector2(-0.82885, 0.55947), Vector2(0, 1)]
+const DIRECTIONS: Array[Vector2] = [Vector2(0.8660254, 0.5), Vector2(0.8660254, -0.5), Vector2(0, -1), Vector2(-0.8660254, -0.5), Vector2(-0.8660254, 0.5), Vector2(0, 1)]
 const LABELS := ["1", "2", "3", "4", "5", "6"]
 const CENTER_RADIUS := 20.0
 const STEP := 46.0
