@@ -103,6 +103,14 @@ func _init() -> void:
 	var trail_ship: Dictionary = ShipFactoryRef.create("trail", "P1", "corvette", Vector2i.ZERO); trail_ship.trail = [Vector2i.ZERO]; trail_ship.velocity = Vector2i(1,0)
 	trail_ship = GameRulesRef.move_ship(trail_ship, {}, [], 1)
 	_check(trail_ship.trail == [Vector2i.ZERO, Vector2i(1,0)], "rotta percorsa conservata per il tracciamento")
+	_check(trail_ship.maneuver_history.size() == 1 and trail_ship.maneuver_history[0].inertial_end == Vector2i(1,0), "componenti della manovra conservate per gravità e spinta persistenti")
+	var two_player: Dictionary = GrandTourDevRef.create_state(["Ada", "Bruno"])
+	two_player.phase = "resupply"; two_player = GameRulesRef.advance_phase(two_player)
+	_check(two_player.segment == "P2" and two_player.phase == "astrogation", "passaggio al segmento del secondo giocatore")
+	two_player.ships[1].landed_at = ""; two_player.ships[1].position = Vector2i(10, 5); two_player.ships[1].previous_position = two_player.ships[1].position; two_player.ships[1].velocity = Vector2i.ZERO
+	two_player.commands[two_player.ships[1].id] = {"thrust_steps":[Vector2i(1,0)]}; two_player.phase = "movement"
+	var p2_from: Vector2i = two_player.ships[1].position; two_player = GameRulesRef.advance_phase(two_player)
+	_check(two_player.ships[1].position == p2_from + Vector2i(1,0) and two_player.ships[0].position != two_player.ships[1].position, "il secondo giocatore esegue la propria spinta")
 	var board := BoardRef.new(); board.size = Vector2(800, 600); var old_zoom: float = board.camera_zoom; board._zoom_at(Vector2(400,300), 1.18)
 	_check(board.camera_zoom > old_zoom, "zoom plancia mantiene un livello navigabile")
 	board.free()
@@ -154,7 +162,7 @@ func _init() -> void:
 	var mine_state: Dictionary = dummy_state.duplicate(true); var mine_ship: Dictionary = mine_state.ships.filter(func(item): return item.owner == "P1" and item.type == "corsair")[0]; var mine_clandestine: Dictionary = mine_state.bodies.filter(func(item): return item.id == "clandestine")[0]
 	mine_state.phase = "resupply"; mine_ship.position = mine_clandestine.hex; mine_ship.velocity = Vector2i.ZERO; mine_ship.inventory.mine = 0; mine_state = Lateral7ScenarioRef.load_mine(mine_state, mine_ship.id)
 	_check(mine_state.ships.filter(func(item): return item.id == mine_ship.id)[0].inventory.mine == 1, "Lateral 7 rende disponibili le mine ai Pirati a Clandestine entro la stiva")
-	if failures == 0: print("OK: 52 test")
+	if failures == 0: print("OK: 55 test")
 	quit(failures)
 
 func _check(value: bool, label: String) -> void:

@@ -32,14 +32,27 @@ static func move_ship(ship: Dictionary, command: Dictionary, gravity_fields: Arr
 		return next
 	next.must_burn_after_takeoff = false
 	next.previous_position = next.position
+	var inertial_end: Vector2i = next.position + next.velocity
 	var applied := Vector2i.ZERO
-	for acceleration: Vector2i in next.pending_gravity: applied += acceleration
+	var gravity_steps: Array = []
+	for acceleration: Vector2i in next.pending_gravity:
+		applied += acceleration
+		gravity_steps.append(acceleration)
 	next.velocity += applied + thrust
 	var destination: Vector2i = next.position + next.velocity
 	var path := HexMathRef.supercover_line(next.position, destination)
 	next.position = destination
 	if not next.has("trail"): next.trail = [next.previous_position]
 	next.trail.append(destination)
+	if not next.has("maneuver_history"): next.maneuver_history = []
+	next.maneuver_history.append({
+		"turn": turn,
+		"from": next.previous_position,
+		"inertial_end": inertial_end,
+		"gravity_steps": gravity_steps,
+		"thrust_steps": thrust_steps.duplicate(true),
+		"destination": destination
+	})
 	next.pending_gravity = []
 	var weak_count_by_body := {}
 	for hex: Vector2i in path.slice(1):

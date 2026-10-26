@@ -21,8 +21,8 @@ var drag_distance := 0.0
 func _ready() -> void:
 	clip_contents = true
 	mouse_filter = Control.MOUSE_FILTER_STOP
-	if ResourceLoader.exists("res://assets/local-reference/map-source.jpg"):
-		map_texture = load("res://assets/local-reference/map-source.jpg")
+	if ResourceLoader.exists("res://assets/map/triplanetary-map-a4-starkiel-v1.jpg"):
+		map_texture = load("res://assets/map/triplanetary-map-a4-starkiel-v1.jpg")
 
 func _gui_input(event: InputEvent) -> void:
 	if event is InputEventMouseButton:
@@ -92,9 +92,9 @@ func _draw() -> void:
 	draw_set_transform(origin, 0.0, Vector2.ONE * scale_factor)
 	draw_rect(Rect2(Vector2.ZERO, MAP_SIZE), Color("071326"))
 	if map_texture:
-		# La sorgente è portrait: trasformazione 90° oraria, senza generare un derivato.
+		# La plancia A4 fornita dall'utente è portrait: viene scalata e ruotata in orizzontale.
 		draw_set_transform(origin + Vector2(MAP_SIZE.x * scale_factor, 0), PI / 2.0, Vector2.ONE * scale_factor)
-		draw_texture(map_texture, Vector2.ZERO)
+		draw_texture_rect(map_texture, Rect2(Vector2.ZERO, Vector2(MAP_SIZE.y, MAP_SIZE.x)), false)
 		draw_set_transform(origin, 0.0, Vector2.ONE * scale_factor)
 	else:
 		for column in range(56):
@@ -125,22 +125,25 @@ func _draw() -> void:
 			for i in range(1, trail.size()):
 				_draw_route_arc(axial_to_pixel(trail[i - 1]), axial_to_pixel(trail[i]), Color(color, 0.9))
 				draw_circle(axial_to_pixel(trail[i]), 2.5, color)
+		_draw_maneuver_history(ship)
 		draw_circle(p, 7, color)
 		if ship.id == selected_ship: draw_arc(p, 10, 0, TAU, 24, Color.WHITE, 2)
 		if ship.id == selected_ship and state.phase == "astrogation":
 			var command: Dictionary = state.get("commands", {}).get(ship.id, {})
-			var vector_velocity: Vector2i = ship.velocity
-			for gravity: Vector2i in ship.get("pending_gravity", []): vector_velocity += gravity
-			var vector_end := axial_to_pixel(ship.position + vector_velocity)
-			draw_dashed_line(p, vector_end, Color("8bd8f7"), 2.0, 12.0)
-			var thrust_total := Vector2i.ZERO
-			for thrust: Vector2i in command.get("thrust_steps", []): thrust_total += thrust
-			if thrust_total != Vector2i.ZERO:
-				var thrust_end := axial_to_pixel(ship.position + vector_velocity + thrust_total)
-				draw_dashed_line(vector_end, thrust_end, Color("f4c95d"), 1.25, 5.0)
-				_draw_marker_hex(thrust_end, 11.0, Color("f4c95d"), 2.0)
-			else:
-				draw_circle(vector_end, 7, Color("8bd8f780"), false, 1.5)
+			var cursor_hex: Vector2i = ship.position + ship.velocity
+			var vector_end := axial_to_pixel(cursor_hex)
+			draw_dashed_line(p, vector_end, Color("238fbd"), 2.0, 12.0)
+			for gravity: Vector2i in ship.get("pending_gravity", []):
+				var gravity_end: Vector2i = cursor_hex + gravity
+				draw_dashed_line(axial_to_pixel(cursor_hex), axial_to_pixel(gravity_end), Color("d94f5c"), 1.4, 5.0)
+				cursor_hex = gravity_end
+			for thrust_step: Vector2i in command.get("thrust_steps", []):
+				var thrust_end: Vector2i = cursor_hex + thrust_step
+				draw_dashed_line(axial_to_pixel(cursor_hex), axial_to_pixel(thrust_end), Color("d39a00"), 1.4, 5.0)
+				_draw_marker_hex(axial_to_pixel(thrust_end), 23.5, Color("d39a00"), 2.0)
+				cursor_hex = thrust_end
+			if command.get("thrust_steps", []).is_empty() and ship.get("pending_gravity", []).is_empty():
+				draw_circle(vector_end, 7, Color("238fbd80"), false, 1.5)
 	for item: Dictionary in state.get("ordnance", []):
 		var p := axial_to_pixel(item.position)
 		var label := "M" if item.kind == "mine" else ("T" if item.kind == "torpedo" else "N")
@@ -153,9 +156,23 @@ func _draw() -> void:
 		draw_circle(p, 7, Color("071326"))
 		draw_arc(p, 7, 0, TAU, 6, color, 2.0)
 	draw_set_transform(Vector2.ZERO, 0.0, Vector2.ONE)
-	draw_rect(Rect2(12, 12, 330, 54), Color("07111fd9"), true)
-	draw_string(ThemeDB.fallback_font, Vector2(24, 34), "Rotella: zoom   Trascina: scorri", HORIZONTAL_ALIGNMENT_LEFT, -1, 15, Color("d8e7f4"))
-	draw_string(ThemeDB.fallback_font, Vector2(24, 55), "Vettore: azzurro   Spinta: giallo   Rotta: continua", HORIZONTAL_ALIGNMENT_LEFT, -1, 13, Color("9db2c6"))
+	draw_rect(Rect2(12, 12, 420, 72), Color("f7f4e8e8"), true)
+	draw_string(ThemeDB.fallback_font, Vector2(24, 34), "Rotella: zoom   Trascina: scorri", HORIZONTAL_ALIGNMENT_LEFT, -1, 15, Color("1f3445"))
+	draw_string(ThemeDB.fallback_font, Vector2(24, 55), "Inerzia: azzurro · Gravità: rosso · Spinta: giallo", HORIZONTAL_ALIGNMENT_LEFT, -1, 13, Color("1f3445"))
+	draw_string(ThemeDB.fallback_font, Vector2(24, 74), "Tratteggio sottile: effetti · Arco spesso: rotta", HORIZONTAL_ALIGNMENT_LEFT, -1, 13, Color("1f3445"))
+
+func _draw_maneuver_history(ship: Dictionary) -> void:
+	for maneuver: Dictionary in ship.get("maneuver_history", []):
+		var cursor_hex: Vector2i = maneuver.get("inertial_end", maneuver.get("from", Vector2i.ZERO))
+		for gravity: Vector2i in maneuver.get("gravity_steps", []):
+			var gravity_end: Vector2i = cursor_hex + gravity
+			draw_dashed_line(axial_to_pixel(cursor_hex), axial_to_pixel(gravity_end), Color("d94f5cb8"), 1.2, 5.0)
+			cursor_hex = gravity_end
+		for thrust: Vector2i in maneuver.get("thrust_steps", []):
+			var thrust_end: Vector2i = cursor_hex + thrust
+			draw_dashed_line(axial_to_pixel(cursor_hex), axial_to_pixel(thrust_end), Color("d39a00c8"), 1.2, 5.0)
+			_draw_marker_hex(axial_to_pixel(thrust_end), 23.5, Color("d39a0099"), 1.2)
+			cursor_hex = thrust_end
 
 func _draw_route_arc(from: Vector2, to: Vector2, color: Color) -> void:
 	if from == to: return

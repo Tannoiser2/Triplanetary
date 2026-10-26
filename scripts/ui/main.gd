@@ -68,18 +68,18 @@ func _ready() -> void:
 
 func _build_ui() -> void:
 	var root := VBoxContainer.new(); root.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT); add_child(root)
-	var header := HBoxContainer.new(); header.custom_minimum_size.y = 76; root.add_child(header)
-	main_title = Label.new(); main_title.text = "  TRIPLANETARY\n  GRAND TOUR · HOT-SEAT"; main_title.add_theme_font_size_override("font_size", 24); main_title.size_flags_horizontal = Control.SIZE_EXPAND_FILL; header.add_child(main_title)
-	var reset := Button.new(); reset.text = "Nuova partita"; reset.custom_minimum_size.x = 110; reset.pressed.connect(_reset); header.add_child(reset)
-	var save := Button.new(); save.text = "Salva"; save.custom_minimum_size.x = 70; save.pressed.connect(_save); header.add_child(save)
-	var load_game := Button.new(); load_game.text = "Carica"; load_game.custom_minimum_size.x = 70; load_game.pressed.connect(_load); header.add_child(load_game)
+	var header := HBoxContainer.new(); header.custom_minimum_size.y = 68; header.add_theme_constant_override("separation", 3); root.add_child(header)
+	main_title = Label.new(); main_title.text = " TRIPLANETARY\n HOT-SEAT"; main_title.add_theme_font_size_override("font_size", 20); main_title.size_flags_horizontal = Control.SIZE_EXPAND_FILL; main_title.text_overrun_behavior = TextServer.OVERRUN_TRIM_ELLIPSIS; header.add_child(main_title)
+	var reset := Button.new(); reset.text = "NUOVA"; reset.tooltip_text = "Nuova partita"; reset.pressed.connect(_reset); header.add_child(reset)
+	var save := Button.new(); save.text = "SALVA"; save.pressed.connect(_save); header.add_child(save)
+	var load_game := Button.new(); load_game.text = "CARICA"; load_game.pressed.connect(_load); header.add_child(load_game)
 	var copy_game := Button.new(); copy_game.text = "Esporta"; copy_game.tooltip_text = "Copia un salvataggio portabile negli appunti"; copy_game.pressed.connect(_copy_portable_save); header.add_child(copy_game)
 	var paste_game := Button.new(); paste_game.text = "Importa"; paste_game.tooltip_text = "Carica il salvataggio presente negli appunti"; paste_game.pressed.connect(_paste_portable_save); header.add_child(paste_game)
 	var replay := Button.new(); replay.text = "Replay"; replay.pressed.connect(_open_replay); header.add_child(replay)
-	var help := Button.new(); help.text = "Come si gioca"; help.pressed.connect(_open_help); header.add_child(help)
+	var help := Button.new(); help.text = "GUIDA"; help.tooltip_text = "Come si gioca"; help.pressed.connect(_open_help); header.add_child(help)
 	var split := HSplitContainer.new(); split.size_flags_vertical = Control.SIZE_EXPAND_FILL; root.add_child(split)
-	board = BoardRef.new(); board.custom_minimum_size = Vector2(760, 600); board.size_flags_horizontal = Control.SIZE_EXPAND_FILL; board.size_flags_vertical = Control.SIZE_EXPAND_FILL; board.hex_clicked.connect(_on_board_hex_clicked); split.add_child(board)
-	var panel := VBoxContainer.new(); panel.custom_minimum_size.x = 390; panel.add_theme_constant_override("separation", 8); split.add_child(panel)
+	board = BoardRef.new(); board.custom_minimum_size = Vector2(600, 520); board.size_flags_horizontal = Control.SIZE_EXPAND_FILL; board.size_flags_vertical = Control.SIZE_EXPAND_FILL; board.hex_clicked.connect(_on_board_hex_clicked); split.add_child(board)
+	var panel := VBoxContainer.new(); panel.custom_minimum_size.x = 350; panel.add_theme_constant_override("separation", 8); split.add_child(panel)
 	var controls_scroll := ScrollContainer.new(); controls_scroll.size_flags_vertical = Control.SIZE_EXPAND_FILL; controls_scroll.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED; panel.add_child(controls_scroll)
 	var controls_column := VBoxContainer.new(); controls_column.size_flags_horizontal = Control.SIZE_EXPAND_FILL; controls_column.add_theme_constant_override("separation", 8); controls_scroll.add_child(controls_column)
 	var info_section := _make_section(controls_column, "STATO E NAVI")
@@ -273,7 +273,7 @@ func _refresh() -> void:
 		var display_name: String = ship.name
 		if state.get("scenario", "") == "escape" and ship.owner == "P1" and ship.get("secret_cargo", false) and (state.segment == "P1" or ship.get("inspected", false)): display_name += " · FUGGITIVI"
 		elif state.get("scenario", "") == "escape" and ship.owner == "P1" and ship.get("inspected", false): display_name += " · ESCA"
-		var button := Button.new(); button.text = "%s [%s]  |  Fuel %s  |  Vettore (%d,%d)  |  %s" % [display_name, ship.owner, fuel_text, velocity.x, velocity.y, state_text]; button.tooltip_text = "Spinte pianificate: %d. Corpi visitati: %d." % [planned.size(), ship.visited_bodies.size()]; button.alignment = HORIZONTAL_ALIGNMENT_LEFT; button.pressed.connect(_select.bind(ship.id)); ships_box.add_child(button)
+		var button := Button.new(); button.text = "%s [%s] · Fuel %s · Vettore (%d,%d) · %s" % [display_name, ship.owner, fuel_text, velocity.x, velocity.y, state_text]; button.tooltip_text = "Spinte pianificate: %d. Corpi visitati: %d." % [planned.size(), ship.visited_bodies.size()]; button.alignment = HORIZONTAL_ALIGNMENT_LEFT; button.text_overrun_behavior = TextServer.OVERRUN_TRIM_ELLIPSIS; button.disabled = ship.owner != state.segment; button.pressed.connect(_select.bind(ship.id)); ships_box.add_child(button)
 	var entries: Array = state.log.duplicate(); entries.reverse(); log_label.text = "Nessun evento registrato." if entries.is_empty() else "\n\n".join(entries)
 	var selected := _selected()
 	_refresh_target_picker(selected)
@@ -297,7 +297,10 @@ func _refresh() -> void:
 	counter_no_button.visible = combat_pending
 	advance_button.disabled = combat_pending or state.phase == "setup"
 
-func _select(id: String) -> void: board.selected_ship = id; overload_planning = false; _refresh()
+func _select(id: String) -> void:
+	for ship: Dictionary in state.ships:
+		if ship.id == id and ship.owner == state.segment and not ship.destroyed:
+			board.selected_ship = id; overload_planning = false; _refresh(); return
 func _target_selected(index: int) -> void:
 	selected_target_id = str(target_picker.get_item_metadata(index)) if index >= 0 else ""
 	_refresh()
@@ -429,7 +432,7 @@ func _load() -> void:
 		state.log.append("Nessun salvataggio disponibile")
 	else:
 		state = loaded
-		board.selected_ship = state.ships[0].id
+		_select_first_owned_ship()
 		state.log.append("Partita caricata")
 	_refresh()
 
