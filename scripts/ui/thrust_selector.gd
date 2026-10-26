@@ -4,17 +4,18 @@ extends Control
 signal direction_selected(direction: int)
 
 # Stesso ordine delle sei direzioni assiali del motore, proiettate sulla griglia della scansione.
-const DIRECTIONS: Array[Vector2] = [Vector2(0.5, 0.866), Vector2(0.5, -0.866), Vector2(0, -1), Vector2(-0.5, -0.866), Vector2(-0.5, 0.866), Vector2(0, 1)]
+const DIRECTIONS: Array[Vector2] = [Vector2(0.82885, 0.55947), Vector2(0.82885, -0.55947), Vector2(0, -1), Vector2(-0.82885, -0.55947), Vector2(-0.82885, 0.55947), Vector2(0, 1)]
 const LABELS := ["1", "2", "3", "4", "5", "6"]
-const CENTER_RADIUS := 30.0
-const STEP := 67.0
-const ARROW_LENGTH := 25.0
+const CENTER_RADIUS := 20.0
+const STEP := 46.0
+const ARROW_LENGTH := 18.0
 
 var enabled := true
 var selected_direction := -1
+var selected_directions: Array[int] = []
 
 func _ready() -> void:
-	custom_minimum_size = Vector2(260, 205)
+	custom_minimum_size = Vector2(205, 135)
 	mouse_filter = Control.MOUSE_FILTER_STOP
 
 func _gui_input(event: InputEvent) -> void:
@@ -35,12 +36,12 @@ func _draw() -> void:
 	var center := size * 0.5
 	_draw_hex(center, Color("79cce8"), Color("0a1726"), 2.0)
 	draw_circle(center, 6.0, Color("59d6c7"))
-	draw_string(ThemeDB.fallback_font, center + Vector2(-18, 20), "NAVE", HORIZONTAL_ALIGNMENT_CENTER, 36, 10, Color("79cce8"))
+	draw_string(ThemeDB.fallback_font, center + Vector2(-15, 14), "NAVE", HORIZONTAL_ALIGNMENT_CENTER, 30, 8, Color("79cce8"))
 	for i in range(6):
 		var cell: Vector2 = center + DIRECTIONS[i] * STEP
-		var active := i == selected_direction
-		_draw_arrow(cell, DIRECTIONS[i], Color("f4b52f") if active else Color("39b7c7"), Color("5b4514") if active else Color("10283a"), 2.5 if active else 1.5)
-		draw_string(ThemeDB.fallback_font, cell + Vector2(-7, 5), LABELS[i], HORIZONTAL_ALIGNMENT_CENTER, 14, 13, Color.WHITE if enabled else Color("70808c"))
+		var active := i == selected_direction or i in selected_directions
+		_draw_arrow(cell, DIRECTIONS[i], Color.WHITE if active else Color("39b7c7"), Color.WHITE if active else Color("10283a"), 2.2 if active else 1.2)
+		draw_string(ThemeDB.fallback_font, cell + Vector2(-6, 4), LABELS[i], HORIZONTAL_ALIGNMENT_CENTER, 12, 11, Color("071326") if active else (Color.WHITE if enabled else Color("70808c")))
 
 func _draw_hex(center: Vector2, border: Color, fill: Color, width: float) -> void:
 	var points := PackedVector2Array([
@@ -53,7 +54,7 @@ func _draw_hex(center: Vector2, border: Color, fill: Color, width: float) -> voi
 
 func _draw_arrow(center: Vector2, direction: Vector2, border: Color, fill: Color, width: float) -> void:
 	var angle := direction.angle()
-	var local := [Vector2(25, 0), Vector2(7, -14), Vector2(7, -6), Vector2(-20, -6), Vector2(-20, 6), Vector2(7, 6), Vector2(7, 14)]
+	var local := [Vector2(18, 0), Vector2(5, -10), Vector2(5, -4), Vector2(-14, -4), Vector2(-14, 4), Vector2(5, 4), Vector2(5, 10)]
 	var points := PackedVector2Array()
 	for point: Vector2 in local: points.append(center + point.rotated(angle))
 	draw_colored_polygon(points, fill)

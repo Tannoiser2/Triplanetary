@@ -97,7 +97,7 @@ static func advance_phase(state: Dictionary) -> Dictionary:
 					if not launcher_items.is_empty() and next.ships[i].velocity == launcher_items[0].velocity:
 						next.ships[i].destroyed = true; next.ships[i].destroyed_reason = "Mancato cambio di rotta dopo il lancio"
 					next.ships[i].must_change_after_launch = false
-				next.log.append("G%d %s · %s → %s" % [next.turn, next.segment, next.ships[i].name, next.ships[i].position])
+				next.log.append("G%d %s · %s -> %s" % [next.turn, next.segment, next.ships[i].name, next.ships[i].position])
 				next.events.append({"turn": next.turn, "segment": next.segment, "phase": "movement", "ship": next.ships[i].id, "command": command.duplicate(true), "position": next.ships[i].position, "velocity": next.ships[i].velocity})
 		OrdnanceRulesRef.move_and_resolve(next)
 		LogisticsRulesRef.update_detection(next)
@@ -149,7 +149,7 @@ static func respond_to_attack(state: Dictionary, counterattack: bool) -> Diction
 	# I risultati sono applicati solo dopo entrambi i tiri.
 	_apply_damage(defender, attack_result, next.turn)
 	if may_counter: _apply_damage(attacker, counter_result, next.turn)
-	next.log.append("Fuoco: %s → %s [%s]%s" % [attacker.name, defender.name, attack_result, " · contrattacco [%s]" % counter_result if may_counter else ""])
+	next.log.append("Fuoco: %s -> %s [%s]%s" % [attacker.name, defender.name, attack_result, " · contrattacco [%s]" % counter_result if may_counter else ""])
 	next.events.append({"turn":next.turn,"segment":next.segment,"phase":"combat","attacker":attacker.id,"defender":defender.id,"attack_result":attack_result,"counter_result":counter_result if may_counter else "none"})
 	next.pending_combat = {}
 	return next

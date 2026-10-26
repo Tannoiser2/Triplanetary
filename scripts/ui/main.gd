@@ -14,7 +14,7 @@ const ReplayRulesRef = preload("res://scripts/engine/replay.gd")
 var state: Dictionary
 var board: Control
 var status: Label
-var ships_box: VBoxContainer
+var ships_box: GridContainer
 var log_label: Label
 var overload_button: Button
 var weak_button: Button
@@ -80,23 +80,24 @@ func _build_ui() -> void:
 	var replay := Button.new(); replay.text = "Replay"; replay.pressed.connect(_open_replay); header.add_child(replay)
 	var help := Button.new(); help.text = "GUIDA"; help.tooltip_text = "Come si gioca"; help.pressed.connect(_open_help); header.add_child(help)
 	var split := HSplitContainer.new(); split.size_flags_vertical = Control.SIZE_EXPAND_FILL; root.add_child(split)
-	board = BoardRef.new(); board.custom_minimum_size = Vector2(600, 520); board.size_flags_horizontal = Control.SIZE_EXPAND_FILL; board.size_flags_vertical = Control.SIZE_EXPAND_FILL; board.hex_clicked.connect(_on_board_hex_clicked); split.add_child(board)
-	var panel := VBoxContainer.new(); panel.custom_minimum_size.x = 350; panel.add_theme_constant_override("separation", 8); split.add_child(panel)
-	var controls_scroll := ScrollContainer.new(); controls_scroll.size_flags_vertical = Control.SIZE_EXPAND_FILL; controls_scroll.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED; panel.add_child(controls_scroll)
-	var controls_column := VBoxContainer.new(); controls_column.size_flags_horizontal = Control.SIZE_EXPAND_FILL; controls_column.add_theme_constant_override("separation", 8); controls_scroll.add_child(controls_column)
-	var info_section := _make_section(controls_column, "STATO E NAVI")
-	status = Label.new(); status.add_theme_font_size_override("font_size", 18); info_section.add_child(status)
-	phase_help = Label.new(); phase_help.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART; phase_help.modulate = Color("9fd9ed"); info_section.add_child(phase_help)
-	var ship_scroll := ScrollContainer.new(); ship_scroll.custom_minimum_size.y = 58; ship_scroll.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED; info_section.add_child(ship_scroll)
-	ships_box = VBoxContainer.new(); ships_box.size_flags_horizontal = Control.SIZE_EXPAND_FILL; ship_scroll.add_child(ships_box)
-	var thrust_section := _make_section(controls_column, "VETTORE E SPINTA")
+	board = BoardRef.new(); board.custom_minimum_size = Vector2(560, 520); board.size_flags_horizontal = Control.SIZE_EXPAND_FILL; board.size_flags_vertical = Control.SIZE_EXPAND_FILL; board.hex_clicked.connect(_on_board_hex_clicked); split.add_child(board)
+	var panel := VBoxContainer.new(); panel.custom_minimum_size.x = 440; panel.add_theme_constant_override("separation", 5); split.add_child(panel)
+	var compact_theme := Theme.new(); compact_theme.set_font_size("font_size", "Label", 11); compact_theme.set_font_size("font_size", "Button", 11); compact_theme.set_font_size("font_size", "OptionButton", 11); panel.theme = compact_theme
+	var info_section := _make_section(panel, "STATO E NAVI")
+	status = Label.new(); status.add_theme_font_size_override("font_size", 14); info_section.add_child(status)
+	phase_help = Label.new(); phase_help.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART; phase_help.modulate = Color("9fd9ed"); phase_help.add_theme_font_size_override("font_size", 10); info_section.add_child(phase_help)
+	ships_box = GridContainer.new(); ships_box.columns = 2; ships_box.size_flags_horizontal = Control.SIZE_EXPAND_FILL; ships_box.add_theme_constant_override("h_separation", 3); ships_box.add_theme_constant_override("v_separation", 2); info_section.add_child(ships_box)
+	var command_row := HBoxContainer.new(); command_row.size_flags_vertical = Control.SIZE_EXPAND_FILL; command_row.add_theme_constant_override("separation", 5); panel.add_child(command_row)
+	var thrust_section := _make_section(command_row, "VETTORE E SPINTA")
+	thrust_section.custom_minimum_size.x = 218
 	thrust_selector = ThrustSelectorRef.new(); thrust_selector.tooltip_text = "Clicca uno dei sei esagoni per scegliere la direzione di spinta"; thrust_selector.direction_selected.connect(_set_thrust); thrust_section.add_child(thrust_selector)
 	overload_button = Button.new(); overload_button.pressed.connect(_toggle_overload); thrust_section.add_child(overload_button)
 	weak_button = Button.new(); weak_button.pressed.connect(_toggle_weak_gravity); thrust_section.add_child(weak_button)
 	var coast := Button.new(); coast.text = "NESSUNA SPINTA"; coast.pressed.connect(_coast); thrust_section.add_child(coast)
-	var actions_section := _make_section(controls_column, "AZIONI")
+	var actions_section := _make_section(command_row, "AZIONI")
+	actions_section.custom_minimum_size.x = 207
 	var target_row := HBoxContainer.new(); actions_section.add_child(target_row)
-	var target_label := Label.new(); target_label.text = "BERSAGLIO"; target_label.custom_minimum_size.x = 82; target_row.add_child(target_label)
+	var target_label := Label.new(); target_label.text = "BERS."; target_label.custom_minimum_size.x = 42; target_row.add_child(target_label)
 	target_picker = OptionButton.new(); target_picker.size_flags_horizontal = Control.SIZE_EXPAND_FILL; target_picker.item_selected.connect(_target_selected); target_row.add_child(target_picker)
 	var actions_grid := GridContainer.new(); actions_grid.columns = 2; actions_section.add_child(actions_grid)
 	surface_button = Button.new(); surface_button.pressed.connect(_surface_action); actions_grid.add_child(surface_button)
@@ -106,31 +107,30 @@ func _build_ui() -> void:
 	var torpedo_grid := GridContainer.new(); torpedo_grid.columns = 6; actions_section.add_child(torpedo_grid); torpedo_controls.append(torpedo_grid)
 	for magnitude in [1, 2]:
 		for i in range(6):
-			var torpedo_step := Button.new(); torpedo_step.text = "%d×%d" % [i + 1, magnitude]; torpedo_step.tooltip_text = "Direzione %d, accelerazione %d" % [i + 1, magnitude]; torpedo_step.pressed.connect(_launch_torpedo.bind(i, magnitude)); torpedo_grid.add_child(torpedo_step)
-	attack_button = Button.new(); attack_button.text = "ATTACCA NAVE NEMICA"; attack_button.pressed.connect(_attack); actions_grid.add_child(attack_button)
-	ram_button = Button.new(); ram_button.text = "PIANIFICA SPERONAMENTO"; ram_button.pressed.connect(_plan_ram); actions_grid.add_child(ram_button)
-	inspect_button = Button.new(); inspect_button.text = "ISPEZIONA / CATTURA"; inspect_button.pressed.connect(_inspect_or_capture); actions_grid.add_child(inspect_button)
-	passenger_button = Button.new(); passenger_button.text = "TRASFERISCI PASSEGGERI"; passenger_button.pressed.connect(_transfer_passengers); actions_grid.add_child(passenger_button)
+			var torpedo_step := Button.new(); torpedo_step.text = "%d x %d" % [i + 1, magnitude]; torpedo_step.tooltip_text = "Direzione %d, accelerazione %d" % [i + 1, magnitude]; torpedo_step.pressed.connect(_launch_torpedo.bind(i, magnitude)); torpedo_grid.add_child(torpedo_step)
+	attack_button = Button.new(); attack_button.text = "ATTACCA"; attack_button.pressed.connect(_attack); actions_grid.add_child(attack_button)
+	ram_button = Button.new(); ram_button.text = "SPERONA"; ram_button.pressed.connect(_plan_ram); actions_grid.add_child(ram_button)
+	inspect_button = Button.new(); inspect_button.text = "ISPEZIONA"; inspect_button.pressed.connect(_inspect_or_capture); actions_grid.add_child(inspect_button)
+	passenger_button = Button.new(); passenger_button.text = "PASSEGGERI"; passenger_button.pressed.connect(_transfer_passengers); actions_grid.add_child(passenger_button)
 	load_mine_button = Button.new(); load_mine_button.text = "CARICA MINA"; load_mine_button.pressed.connect(_load_lateral_mine); actions_grid.add_child(load_mine_button)
 	counter_yes_button = Button.new(); counter_yes_button.text = "CONTRATTACCA"; counter_yes_button.pressed.connect(_counter.bind(true)); actions_grid.add_child(counter_yes_button)
-	counter_no_button = Button.new(); counter_no_button.text = "RINUNCIA AL CONTRATTACCO"; counter_no_button.pressed.connect(_counter.bind(false)); actions_grid.add_child(counter_no_button)
-	advance_button = Button.new(); advance_button.text = "AVANZA FASE"; advance_button.custom_minimum_size.y = 44; advance_button.pressed.connect(_advance); panel.add_child(advance_button)
-	var log_section := _make_section(controls_column, "REGISTRO")
-	var log_scroll := ScrollContainer.new(); log_scroll.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED; log_scroll.custom_minimum_size.y = 120; log_section.add_child(log_scroll)
-	log_label = Label.new(); log_label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART; log_label.size_flags_horizontal = Control.SIZE_EXPAND_FILL; log_scroll.add_child(log_label)
+	counter_no_button = Button.new(); counter_no_button.text = "NON RISPONDERE"; counter_no_button.pressed.connect(_counter.bind(false)); actions_grid.add_child(counter_no_button)
+	var log_section := _make_section(panel, "REGISTRO")
+	log_label = Label.new(); log_label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART; log_label.add_theme_font_size_override("font_size", 9); log_label.max_lines_visible = 4; log_label.custom_minimum_size.y = 46; log_section.add_child(log_label)
+	advance_button = Button.new(); advance_button.text = "AVANZA FASE"; advance_button.custom_minimum_size.y = 38; advance_button.pressed.connect(_advance); panel.add_child(advance_button)
 	_build_privacy_overlay()
 	_build_replay_overlay()
 	_build_main_menu()
 	_build_help_overlay()
 
-func _make_section(parent: VBoxContainer, title_text: String, expand := false) -> VBoxContainer:
+func _make_section(parent: Control, title_text: String, expand := false) -> VBoxContainer:
 	var frame := PanelContainer.new()
-	var style := StyleBoxFlat.new(); style.bg_color = Color("0d1928"); style.border_color = Color("27435e"); style.set_border_width_all(1); style.corner_radius_top_left = 7; style.corner_radius_top_right = 7; style.corner_radius_bottom_left = 7; style.corner_radius_bottom_right = 7; style.content_margin_left = 10; style.content_margin_right = 10; style.content_margin_top = 8; style.content_margin_bottom = 8
+	var style := StyleBoxFlat.new(); style.bg_color = Color("0d1928"); style.border_color = Color("27435e"); style.set_border_width_all(1); style.corner_radius_top_left = 5; style.corner_radius_top_right = 5; style.corner_radius_bottom_left = 5; style.corner_radius_bottom_right = 5; style.content_margin_left = 6; style.content_margin_right = 6; style.content_margin_top = 4; style.content_margin_bottom = 4
 	frame.add_theme_stylebox_override("panel", style)
 	if expand: frame.size_flags_vertical = Control.SIZE_EXPAND_FILL
 	parent.add_child(frame)
-	var content := VBoxContainer.new(); content.add_theme_constant_override("separation", 5); frame.add_child(content)
-	var title := Label.new(); title.text = title_text; title.modulate = Color("79cce8"); title.add_theme_font_size_override("font_size", 14); content.add_child(title)
+	var content := VBoxContainer.new(); content.add_theme_constant_override("separation", 3); frame.add_child(content)
+	var title := Label.new(); title.text = title_text; title.modulate = Color("79cce8"); title.add_theme_font_size_override("font_size", 11); content.add_child(title)
 	return content
 
 func _build_help_overlay() -> void:
@@ -247,15 +247,15 @@ func _build_replay_overlay() -> void:
 	var title := Label.new(); title.text = "REPLAY DELLA PARTITA"; title.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER; title.add_theme_font_size_override("font_size", 28); card.add_child(title)
 	replay_text = Label.new(); replay_text.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART; replay_text.size_flags_vertical = Control.SIZE_EXPAND_FILL; replay_text.add_theme_font_size_override("font_size", 18); card.add_child(replay_text)
 	var controls := HBoxContainer.new(); controls.alignment = BoxContainer.ALIGNMENT_CENTER; card.add_child(controls)
-	var previous := Button.new(); previous.text = "◀ PRECEDENTE"; previous.pressed.connect(_replay_step.bind(-1)); controls.add_child(previous)
+	var previous := Button.new(); previous.text = "< PRECEDENTE"; previous.pressed.connect(_replay_step.bind(-1)); controls.add_child(previous)
 	var close := Button.new(); close.text = "TORNA ALLA PARTITA"; close.pressed.connect(_close_replay); controls.add_child(close)
-	var following := Button.new(); following.text = "SUCCESSIVO ▶"; following.pressed.connect(_replay_step.bind(1)); controls.add_child(following)
+	var following := Button.new(); following.text = "SUCCESSIVO >"; following.pressed.connect(_replay_step.bind(1)); controls.add_child(following)
 
 func _refresh() -> void:
 	board.state = state; board.queue_redraw()
 	var combat_prompt := "\nPASSARE A %s: scegliere il contrattacco" % state.pending_combat.defender if not state.pending_combat.is_empty() else ""
-	status.text = "GIORNO %d\n%s · %s%s%s" % [state.turn, state.segment, String(state.phase).to_upper(), combat_prompt, "\nVINCITORE: " + state.winner if state.winner != "" else ""]
-	phase_help.text = {"setup":"Clicca un esagono di asteroidi libero per collocare il prossimo segnalino coperto.","astrogation":"Seleziona la spinta sul diagramma esagonale. Azzurro: vettore; rosso: gravità; giallo: spinta; arco spesso: rotta.","ordnance":"Lancia un solo ordigno, se presente a bordo.","movement":"Conferma per applicare vettore, spinta e gravità.","combat":"Dichiara un attacco oppure prosegui.","resupply":"Rifornimento e manutenzione alle basi valide."}.get(state.phase, "")
+	status.text = "G%d · %s · %s%s%s" % [state.turn, state.segment, String(state.phase).to_upper(), combat_prompt, " · VINCE " + state.winner if state.winner != "" else ""]
+	phase_help.text = {"setup":"Clicca un asteroide libero per collocare il segnalino.","astrogation":"Scegli una freccia. Azzurro: vettore; rosso: gravità; giallo: spinta; continuo: rotta.","ordnance":"Lancia un solo ordigno disponibile.","movement":"Applica vettore, spinta e gravità.","combat":"Attacca oppure prosegui.","resupply":"Rifornimento e manutenzione alle basi."}.get(state.phase, "")
 	if state.phase == "setup":
 		var setup_unit: Dictionary = Lateral7ScenarioRef.next_setup_unit(state)
 		phase_help.text += "\nDa collocare: %s (%d/%d)." % ["nave/segnalino Marina" if setup_unit.get("owner", "") == "P2" else "nave/segnalino Pirati", int(state.get("setup_index", 0)) + 1, Lateral7ScenarioRef.SETUP_UNITS.size()]
@@ -272,8 +272,8 @@ func _refresh() -> void:
 		if state.get("scenario", "") == "escape" and ship.owner == "P1" and ship.get("secret_cargo", false) and (state.segment == "P1" or ship.get("inspected", false)): display_name += " · FUGGITIVI"
 		elif state.get("scenario", "") == "escape" and ship.owner == "P1" and ship.get("inspected", false): display_name += " · ESCA"
 		var gravity_count: int = ship.get("pending_gravity", []).size()
-		var button := Button.new(); button.text = "%s [%s] · Fuel %s · Vettore (%d,%d) · Gravità prossima %d · %s" % [display_name, ship.owner, fuel_text, velocity.x, velocity.y, gravity_count, state_text]; button.tooltip_text = "Spinte pianificate: %d. Effetti di gravità al prossimo movimento: %d. Corpi visitati: %d." % [planned.size(), gravity_count, ship.visited_bodies.size()]; button.alignment = HORIZONTAL_ALIGNMENT_LEFT; button.text_overrun_behavior = TextServer.OVERRUN_TRIM_ELLIPSIS; button.disabled = ship.owner != state.segment; button.pressed.connect(_select.bind(ship.id)); ships_box.add_child(button)
-	var entries: Array = state.log.duplicate(); entries.reverse(); log_label.text = "Nessun evento registrato." if entries.is_empty() else "\n\n".join(entries)
+		var button := Button.new(); button.text = "%s [%s] · F%s · V(%d,%d) · G%d · %s" % [display_name, ship.owner, fuel_text, velocity.x, velocity.y, gravity_count, state_text]; button.tooltip_text = "Spinte pianificate: %d. Effetti di gravità al prossimo movimento: %d. Corpi visitati: %d." % [planned.size(), gravity_count, ship.visited_bodies.size()]; button.alignment = HORIZONTAL_ALIGNMENT_LEFT; button.text_overrun_behavior = TextServer.OVERRUN_TRIM_ELLIPSIS; button.disabled = ship.owner != state.segment; button.pressed.connect(_select.bind(ship.id)); ships_box.add_child(button)
+	var entries: Array = state.log.duplicate(); entries.reverse(); entries = entries.slice(0, 3); log_label.text = "Nessun evento registrato." if entries.is_empty() else "\n".join(entries)
 	var selected := _selected()
 	_refresh_target_picker(selected)
 	overload_button.text = "Sovraccarico: %s" % ("ATTIVO" if overload_planning else "spento")
@@ -281,17 +281,23 @@ func _refresh() -> void:
 	var command: Dictionary = state.commands.get(selected.id, {})
 	thrust_selector.enabled = state.phase == "astrogation" and selected.owner == state.segment and not selected.destroyed and selected.get("landed_at", "") == ""
 	thrust_selector.selected_direction = -1
-	if command.get("thrust_steps", []).size() == 1: thrust_selector.selected_direction = HexMathRef.DIRECTIONS.find(command.thrust_steps[0])
+	thrust_selector.selected_directions.clear()
+	for step: Vector2i in command.get("thrust_steps", []):
+		var direction_index := HexMathRef.DIRECTIONS.find(step)
+		if direction_index >= 0 and direction_index not in thrust_selector.selected_directions: thrust_selector.selected_directions.append(direction_index)
 	thrust_selector.queue_redraw()
 	weak_button.text = "Prima gravità debole: %s" % ("APPLICA" if command.get("use_first_weak_gravity", false) else "ignora")
-	surface_button.visible = state.phase != "setup" and (selected.get("landed_at", "") != "" or _landable_body(selected) != "")
-	surface_button.text = "DECOLLA" if selected.get("landed_at", "") != "" else "ATTERRA"
+	var can_surface: bool = state.phase == "astrogation" and selected.owner == state.segment and (selected.get("landed_at", "") != "" or _landable_body(selected) != "")
+	surface_button.visible = true; surface_button.disabled = not can_surface
+	surface_button.text = "DECOLLA" if selected.get("landed_at", "") != "" else ("ATTERRA" if _landable_body(selected) != "" else "SUPERFICIE")
 	for kind in ordnance_buttons:
-		ordnance_buttons[kind].visible = kind != "torpedo" and state.phase == "ordnance" and selected.owner == state.segment and selected.inventory.get(kind, 0) > 0
+		ordnance_buttons[kind].visible = true
+		ordnance_buttons[kind].disabled = state.phase != "ordnance" or selected.owner != state.segment or selected.inventory.get(kind, 0) <= 0 or (kind == "torpedo" and selected.commercial)
 	var show_torpedo: bool = state.phase == "ordnance" and selected.owner == state.segment and selected.inventory.get("torpedo", 0) > 0 and not selected.commercial
 	for control in torpedo_controls: control.visible = show_torpedo
 	var combat_pending: bool = not state.pending_combat.is_empty()
-	attack_button.visible = state.phase == "combat" and not combat_pending and selected.owner == state.segment and not selected.destroyed and not selected.commercial and selected.get("landed_at", "") == "" and _enemy_target(selected.owner) != ""
+	attack_button.visible = true
+	attack_button.disabled = state.phase != "combat" or combat_pending or selected.owner != state.segment or selected.destroyed or selected.commercial or selected.get("landed_at", "") != "" or _enemy_target(selected.owner) == ""
 	ram_button.visible = state.get("scenario", "") == "escape" and state.phase == "astrogation" and selected.owner == "P1" and selected.get("landed_at", "") == "" and _enemy_target(selected.owner) != ""
 	inspect_button.visible = state.get("scenario", "") == "escape" and state.phase == "resupply" and selected.owner == "P2" and _matching_pilgrim(selected) != ""
 	passenger_button.visible = state.get("scenario", "") == "lateral-7" and state.phase == "resupply" and selected.owner == "P1" and _passenger_holder_matching(selected) != ""

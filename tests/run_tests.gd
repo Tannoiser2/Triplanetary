@@ -14,6 +14,7 @@ const ReplayRulesRef = preload("res://scripts/engine/replay.gd")
 const ShipFactoryRef = preload("res://scripts/data/ship_factory.gd")
 const BoardRef = preload("res://scripts/ui/board.gd")
 const MainRef = preload("res://scripts/ui/main.gd")
+const ThrustSelectorRef = preload("res://scripts/ui/thrust_selector.gd")
 
 var failures := 0
 
@@ -119,6 +120,10 @@ func _init() -> void:
 	_check(board.axial_to_pixel(board._offset_to_axial(24, 22)) == Vector2(735.5, 925.5), "griglia logica calibrata sui centri della scansione")
 	board.free()
 	var main_ui := MainRef.new(); main_ui._ready()
+	var game_root: Control = main_ui.get_child(0); var game_split: HSplitContainer = game_root.get_child(1); var game_panel: VBoxContainer = game_split.get_child(1)
+	_check(game_panel.get_children().all(func(item): return not item is ScrollContainer), "pannello partita privo di finestre scorrevoli")
+	_check(game_panel.get_combined_minimum_size().y <= 652.0, "tutti i blocchi del pannello rientrano nell'altezza di gioco")
+	_check(is_equal_approx(ThrustSelectorRef.DIRECTIONS[0].y / ThrustSelectorRef.DIRECTIONS[0].x, 20.25 / 30.0), "frecce diagonali allineate ai centri reali della griglia")
 	main_ui.state = GrandTourDevRef.create_state(["Ada", "Bruno"]); main_ui.state.phase = "resupply"; main_ui._refresh(); main_ui._advance()
 	_check(main_ui.state.segment == "P2" and main_ui.board.selected_ship == "p2", "interfaccia seleziona P2 prima di ridisegnare il nuovo segmento")
 	main_ui.queue_free()
@@ -170,7 +175,7 @@ func _init() -> void:
 	var mine_state: Dictionary = dummy_state.duplicate(true); var mine_ship: Dictionary = mine_state.ships.filter(func(item): return item.owner == "P1" and item.type == "corsair")[0]; var mine_clandestine: Dictionary = mine_state.bodies.filter(func(item): return item.id == "clandestine")[0]
 	mine_state.phase = "resupply"; mine_ship.position = mine_clandestine.hex; mine_ship.velocity = Vector2i.ZERO; mine_ship.inventory.mine = 0; mine_state = Lateral7ScenarioRef.load_mine(mine_state, mine_ship.id)
 	_check(mine_state.ships.filter(func(item): return item.id == mine_ship.id)[0].inventory.mine == 1, "Lateral 7 rende disponibili le mine ai Pirati a Clandestine entro la stiva")
-	if failures == 0: print("OK: 59 test")
+	if failures == 0: print("OK: 62 test")
 	quit(failures)
 
 func _check(value: bool, label: String) -> void:
