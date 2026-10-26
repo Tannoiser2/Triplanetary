@@ -11,7 +11,7 @@ const PHASES := ["astrogation", "ordnance", "movement", "combat", "resupply"]
 
 static func move_ship(ship: Dictionary, command: Dictionary, gravity_fields: Array, turn: int) -> Dictionary:
 	var next := ship.duplicate(true)
-	if next.destroyed: return next
+	if next.destroyed or next.get("escaped", false) or next.get("captured", false): return next
 	if next.get("landed_at", "") != "": return next
 	var thrust_steps: Array = command.get("thrust_steps", []) if next.disabled_until_turn < turn else []
 	if thrust_steps.size() > 2: push_error("Comando di spinta non valido"); return next
@@ -68,6 +68,7 @@ static func advance_phase(state: Dictionary) -> Dictionary:
 				elif command.has("land_body_id"): _land(next.ships[i], command.land_body_id, next.bodies)
 				else: next.ships[i] = move_ship(next.ships[i], command, next.gravity, next.turn)
 				_apply_map_and_body_collisions(next.ships[i], next.bodies, next, from_position)
+				_resolve_ram(next, next.ships[i], command, from_position)
 				OrdnanceRulesRef.resolve_asteroid_hazards(next, next.ships[i], HexMathRef.supercover_line(from_position, next.ships[i].position))
 				if next.ships[i].get("must_change_after_launch", false):
 					var launcher_items: Array = next.ordnance.filter(func(item): return item.launcher_id == next.ships[i].id and item.age == 0)
@@ -83,7 +84,7 @@ static func advance_phase(state: Dictionary) -> Dictionary:
 			if next.ships[i].owner != next.segment: continue
 			for base: Dictionary in next.get("bases", []):
 				if BaseRulesRef.resupply(next, next.ships[i], base): break
-	_check_grand_tour_victory(next)
+	_check_scenario_victory(next)
 	if index < PHASES.size() - 1:
 		next.phase = PHASES[index + 1]
 	else:
@@ -191,6 +192,12 @@ static func _apply_map_and_body_collisions(ship: Dictionary, bodies: Array, stat
 	if ship.destroyed or ship.get("landed_at", "") != "": return
 	var offset := HexMathRef.axial_to_odd_q(ship.position)
 	if offset.x < 0 or offset.x >= state.map_columns or offset.y < 0 or offset.y >= state.map_rows:
+		if state.get("scenario", "") == "escape" and ship.owner == "P1" and ship.type == "transport" and offset.x >= state.map_columns:
+			ship.escaped = true
+			ship.exit_velocity = ship.velocity
+			ship.exit_fuel = ship.fuel
+			state.log.append("%s ha superato il bordo oltre Giove" % ship.name)
+			return
 		ship.destroyed = true; ship.destroyed_reason = "Uscita dalla mappa"; return
 	var path: Array = HexMathRef.supercover_line(from_position, ship.position).slice(1)
 	for body: Dictionary in bodies:
@@ -201,6 +208,10 @@ static func _body_by_id(bodies: Array, id: String) -> Dictionary:
 	for body: Dictionary in bodies:
 		if body.id == id: return body
 	return {}
+
+static func _check_scenario_victory(state: Dictionary) -> void:
+	if state.get("scenario", "") == "grand-tour-2037": _check_grand_tour_victory(state)
+	elif state.get("scenario", "") == "escape": _check_escape_victory(state)
 
 static func _check_grand_tour_victory(state: Dictionary) -> void:
 	var required: Array = []
@@ -216,3 +227,56 @@ static func _check_grand_tour_victory(state: Dictionary) -> void:
 			state.winner = ship.owner
 			if not ("Vittoria Grand Tour: " + ship.owner) in state.log:
 				state.log.append("Vittoria Grand Tour: %s, carburante consumato %d" % [ship.owner, ship.fuel_spent])
+
+static func _check_escape_victory(state: Dictionary) -> void:
+	if state.winner != "": return
+	var fugitive_id: String = state.get("escape", {}).get("fugitive_ship_id", "")
+	var fugitive := _ship_by_id(state.ships, fugitive_id)
+	if fugitive.is_empty(): return
+	if fugitive.get("escaped", false):
+		var stopping_fuel := HexMathRef.distance(Vector2i.ZERO, fugitive.get("exit_velocity", Vector2i.ZERO)) + 1
+		state.winner = "P1"
+		state.victory_level = "decisiva" if fugitive.get("exit_fuel", 0) >= stopping_fuel else "marginale"
+	elif fugitive.get("captured", false):
+		var captor := _ship_by_id(state.ships, fugitive.get("captured_by", ""))
+		if not captor.is_empty() and captor.get("landed_at", "") in ["terra", "venus", "io"]:
+			state.winner = "P2"; state.victory_level = "decisiva"
+	elif fugitive.destroyed:
+		var enforcer_destroyed := false
+		for ship: Dictionary in state.ships:
+			if ship.owner == "P2" and ship.destroyed: enforcer_destroyed = true
+		state.winner = "P1" if enforcer_destroyed else "P2"
+		state.victory_level = "morale" if enforcer_destroyed else "marginale"
+	if state.winner != "": state.log.append("Escape: vittoria %s di %s" % [state.victory_level, state.winner])
+
+static func inspect_or_capture(state: Dictionary, inspector_id: String, target_id: String) -> Dictionary:
+	var next := state.duplicate(true)
+	if next.get("scenario", "") != "escape" or next.phase != "resupply": return next
+	var inspector := _ship_by_id(next.ships, inspector_id)
+	var target := _ship_by_id(next.ships, target_id)
+	if inspector.is_empty() or target.is_empty() or inspector.owner != "P2" or target.owner != "P1": return next
+	if inspector.destroyed or target.destroyed or target.get("escaped", false): return next
+	if inspector.position != target.position or inspector.velocity != target.velocity: return next
+	target.inspected = true
+	var identity := "fuggitivi" if target.get("secret_cargo", false) else "esca"
+	next.log.append("%s ispeziona %s: %s" % [inspector.name, target.name, identity])
+	if target.get("secret_cargo", false) and target.disabled_until_turn >= next.turn:
+		target.captured = true
+		target.captured_by = inspector.id
+		next.log.append("I fuggitivi sono stati catturati da %s" % inspector.name)
+	_check_escape_victory(next)
+	return next
+
+static func _resolve_ram(state: Dictionary, attacker: Dictionary, command: Dictionary, from_position: Vector2i) -> void:
+	var target_id: String = command.get("ram_target_id", "")
+	if target_id == "" or attacker.destroyed or attacker.get("escaped", false): return
+	if state.get("scenario", "") != "escape" or attacker.owner != "P1": return
+	var target := _ship_by_id(state.ships, target_id)
+	if target.is_empty() or target.owner == attacker.owner or target.destroyed: return
+	if target.position not in HexMathRef.supercover_line(from_position, attacker.position): return
+	var die := _roll_d6(state)
+	var result := "D2" if die >= 5 else "-"
+	_apply_damage(attacker, result, state.turn)
+	_apply_damage(target, result, state.turn)
+	state.log.append("Speronamento di %s contro %s: tiro %d [%s]" % [attacker.name, target.name, die, result])
+	state.events.append({"turn":state.turn, "segment":state.segment, "phase":"movement", "kind":"ram", "attacker":attacker.id, "target":target.id, "die":die, "result":result})

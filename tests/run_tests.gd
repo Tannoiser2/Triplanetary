@@ -4,6 +4,7 @@ const HexMathRef = preload("res://scripts/engine/hex.gd")
 const GameRulesRef = preload("res://scripts/engine/game.gd")
 const CombatRulesRef = preload("res://scripts/engine/combat.gd")
 const GrandTourDevRef = preload("res://scripts/data/grand_tour_dev.gd")
+const EscapeScenarioRef = preload("res://scripts/data/escape.gd")
 const PersistenceRef = preload("res://scripts/engine/persistence.gd")
 const OrdnanceRulesRef = preload("res://scripts/engine/ordnance.gd")
 const LogisticsRulesRef = preload("res://scripts/engine/logistics.gd")
@@ -104,7 +105,23 @@ func _init() -> void:
 	var board := BoardRef.new(); board.size = Vector2(800, 600); var old_zoom: float = board.camera_zoom; board._zoom_at(Vector2(400,300), 1.18)
 	_check(board.camera_zoom > old_zoom, "zoom plancia mantiene un livello navigabile")
 	board.free()
-	if failures == 0: print("OK: 36 test")
+	var escape_state: Dictionary = EscapeScenarioRef.create_state(["Pellegrini", "Enforcers"])
+	_check(escape_state.ships.size() == 5 and escape_state.ships.filter(func(item): return item.get("secret_cargo", false)).size() == 1 and escape_state.bases.size() == 3, "Escape prepara flotte, identità segreta e sole tre basi")
+	var fugitive: Dictionary = escape_state.ships[0]; fugitive.landed_at = ""; fugitive.position = Vector2i(55, -10); fugitive.previous_position = fugitive.position; fugitive.velocity = Vector2i(1, 0); escape_state.phase = "movement"
+	escape_state = GameRulesRef.advance_phase(escape_state)
+	_check(escape_state.winner == "P1" and escape_state.victory_level == "decisiva" and escape_state.ships[0].escaped, "Escape assegna vittoria decisiva uscendo oltre Giove con carburante di arresto più uno")
+	var capture_state: Dictionary = EscapeScenarioRef.create_state(); capture_state.phase = "resupply"; var capture_target: Dictionary = capture_state.ships[0]; var inspector: Dictionary = capture_state.ships[3]
+	capture_target.landed_at = ""; capture_target.position = inspector.position; capture_target.velocity = inspector.velocity; capture_target.disabled_until_turn = capture_state.turn + 1
+	capture_state = GameRulesRef.inspect_or_capture(capture_state, inspector.id, capture_target.id)
+	_check(capture_state.ships[0].inspected and capture_state.ships[0].captured, "Escape rivela e cattura i fuggitivi disabilitati a rotta coincidente")
+	capture_state.ships[3].landed_at = "terra"; capture_state = GameRulesRef.advance_phase(capture_state)
+	_check(capture_state.winner == "P2" and capture_state.victory_level == "decisiva", "Escape assegna vittoria decisiva agli Enforcers che riportano i prigionieri a una base")
+	var ram_state: Dictionary = EscapeScenarioRef.create_state(); ram_state.phase = "movement"; ram_state.rng_state = 2; var rammer: Dictionary = ram_state.ships[0]; var ram_target: Dictionary = ram_state.ships[3]
+	rammer.landed_at = ""; rammer.position = Vector2i(5, 5); rammer.previous_position = rammer.position; rammer.velocity = Vector2i(1, 0); ram_target.position = Vector2i(6, 5); ram_target.velocity = Vector2i.ZERO; ram_state.commands[rammer.id] = {"ram_target_id":ram_target.id}
+	ram_state = GameRulesRef.advance_phase(ram_state)
+	var ram_events: Array = ram_state.events.filter(func(event): return event.get("kind", "") == "ram")
+	_check(ram_events.size() == 1 and ram_state.ships[0].disabled_until_turn == 3 and ram_state.ships[3].disabled_until_turn == 3, "Escape risolve lo speronamento sulla colonna Ram per entrambe le navi")
+	if failures == 0: print("OK: 41 test")
 	quit(failures)
 
 func _check(value: bool, label: String) -> void:

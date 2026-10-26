@@ -3,6 +3,7 @@ extends Control
 const HexMathRef = preload("res://scripts/engine/hex.gd")
 const GameRulesRef = preload("res://scripts/engine/game.gd")
 const GrandTourDevRef = preload("res://scripts/data/grand_tour_dev.gd")
+const EscapeScenarioRef = preload("res://scripts/data/escape.gd")
 const BoardRef = preload("res://scripts/ui/board.gd")
 const PersistenceRef = preload("res://scripts/engine/persistence.gd")
 const OrdnanceRulesRef = preload("res://scripts/engine/ordnance.gd")
@@ -17,6 +18,10 @@ var overload_button: Button
 var weak_button: Button
 var surface_button: Button
 var attack_button: Button
+var inspect_button: Button
+var ram_button: Button
+var target_picker: OptionButton
+var selected_target_id := ""
 var counter_yes_button: Button
 var counter_no_button: Button
 var advance_button: Button
@@ -50,6 +55,7 @@ var start_button: Button
 var main_title: Label
 var phase_help: Label
 var help_overlay: ColorRect
+var help_body: Label
 
 func _ready() -> void:
 	state = GrandTourDevRef.create_state()
@@ -88,6 +94,9 @@ func _build_ui() -> void:
 	var coast := Button.new(); coast.text = "NESSUNA SPINTA"; coast.pressed.connect(_coast); thrust_section.add_child(coast)
 	# Le azioni restano sempre visibili; solo stato e pianificazione scorrono se lo spazio è ridotto.
 	var actions_section := _make_section(panel, "AZIONI")
+	var target_row := HBoxContainer.new(); actions_section.add_child(target_row)
+	var target_label := Label.new(); target_label.text = "BERSAGLIO"; target_label.custom_minimum_size.x = 82; target_row.add_child(target_label)
+	target_picker = OptionButton.new(); target_picker.size_flags_horizontal = Control.SIZE_EXPAND_FILL; target_picker.item_selected.connect(_target_selected); target_row.add_child(target_picker)
 	var actions_grid := GridContainer.new(); actions_grid.columns = 2; actions_section.add_child(actions_grid)
 	surface_button = Button.new(); surface_button.pressed.connect(_surface_action); actions_grid.add_child(surface_button)
 	for kind in ["mine", "torpedo", "nuke"]:
@@ -98,6 +107,8 @@ func _build_ui() -> void:
 		for i in range(6):
 			var torpedo_step := Button.new(); torpedo_step.text = "%d×%d" % [i + 1, magnitude]; torpedo_step.tooltip_text = "Direzione %d, accelerazione %d" % [i + 1, magnitude]; torpedo_step.pressed.connect(_launch_torpedo.bind(i, magnitude)); torpedo_grid.add_child(torpedo_step)
 	attack_button = Button.new(); attack_button.text = "ATTACCA NAVE NEMICA"; attack_button.pressed.connect(_attack); actions_grid.add_child(attack_button)
+	ram_button = Button.new(); ram_button.text = "PIANIFICA SPERONAMENTO"; ram_button.pressed.connect(_plan_ram); actions_grid.add_child(ram_button)
+	inspect_button = Button.new(); inspect_button.text = "ISPEZIONA / CATTURA"; inspect_button.pressed.connect(_inspect_or_capture); actions_grid.add_child(inspect_button)
 	counter_yes_button = Button.new(); counter_yes_button.text = "CONTRATTACCA"; counter_yes_button.pressed.connect(_counter.bind(true)); actions_grid.add_child(counter_yes_button)
 	counter_no_button = Button.new(); counter_no_button.text = "RINUNCIA AL CONTRATTACCO"; counter_no_button.pressed.connect(_counter.bind(false)); actions_grid.add_child(counter_no_button)
 	advance_button = Button.new(); advance_button.text = "AVANZA FASE"; advance_button.custom_minimum_size.y = 36; advance_button.pressed.connect(_advance); actions_grid.add_child(advance_button)
@@ -123,8 +134,8 @@ func _build_help_overlay() -> void:
 	help_overlay = ColorRect.new(); help_overlay.color = Color("07111fff"); help_overlay.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT); help_overlay.mouse_filter = Control.MOUSE_FILTER_STOP; help_overlay.visible = false; add_child(help_overlay)
 	var center := CenterContainer.new(); center.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT); help_overlay.add_child(center)
 	var card := VBoxContainer.new(); card.custom_minimum_size = Vector2(720, 540); center.add_child(card)
-	var title := Label.new(); title.text = "COME SI GIOCA · GRAND TOUR"; title.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER; title.add_theme_font_size_override("font_size", 28); card.add_child(title)
-	var body := Label.new(); body.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART; body.size_flags_vertical = Control.SIZE_EXPAND_FILL; body.add_theme_font_size_override("font_size", 18); body.text = "OBIETTIVO\nAttraversa almeno un campo di gravità piena di ogni corpo e torna ad atterrare sulla Terra.\n\n1 · ASTROGAZIONE — Seleziona la nave e una direzione di spinta, oppure Nessuna spinta. Il vettore è azzurro tratteggiato; la spinta è il tratteggio giallo più fine e termina nell'esagono di arrivo. La rotta effettivamente percorsa resta come arco continuo e spesso.\n\n2 · ORDNANCE — Se disponibili, lancia mine, siluri o testate.\n\n3 · MOVIMENTO — Premi Avanza fase: inerzia, spinta e gravità pendente vengono applicate.\n\n4 · COMBATTIMENTO — Se un bersaglio rilevato è raggiungibile, dichiara l’attacco; l’altro giocatore sceglie il contrattacco.\n\n5 · RIFORNIMENTO — Atterrando su Terra, Venere, Marte o Callisto recuperi carburante e sovraccarico.\n\nMAPPA — Usa la rotella per ingrandire o ridurre e trascina con il tasto sinistro o centrale.\n\nDECOLLO — Premi Decolla, poi pianifica almeno una spinta nel turno successivo: senza spinta la nave ricade."; card.add_child(body)
+	var title := Label.new(); title.text = "COME SI GIOCA"; title.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER; title.add_theme_font_size_override("font_size", 28); card.add_child(title)
+	help_body = Label.new(); help_body.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART; help_body.size_flags_vertical = Control.SIZE_EXPAND_FILL; help_body.add_theme_font_size_override("font_size", 18); card.add_child(help_body)
 	var close := Button.new(); close.text = "HO CAPITO"; close.custom_minimum_size.y = 56; close.pressed.connect(_close_help); card.add_child(close)
 
 func _build_main_menu() -> void:
@@ -172,14 +183,19 @@ func _refresh_menu_availability() -> void:
 	for field in player_type_fields:
 		if field.selected != 2: active_players += 1
 		if field.selected == 1: has_ai = true
-	var playable := selected_scenario == 0 and active_players >= 2 and not has_ai
+	var required_players := 2 if selected_scenario == 1 else 2
+	var scenario_available := selected_scenario in [0, 1]
+	var count_valid := active_players >= required_players if selected_scenario == 0 else active_players == required_players
+	var playable := scenario_available and count_valid and not has_ai
 	start_button.disabled = not playable
-	if selected_scenario != 0:
+	if not scenario_available:
 		menu_note.text = "Scenario presente nelle regole ma non ancora giocabile in questa build."
 	elif has_ai:
 		menu_note.text = "La modalità IA è predisposta nel menu, ma il pilota automatico fedele alle regole è ancora da implementare."
-	elif active_players < 2:
-		menu_note.text = "Seleziona almeno due giocatori umani."
+	elif not count_valid:
+		menu_note.text = "Grand Tour richiede almeno due giocatori; Escape ne richiede esattamente due."
+	elif selected_scenario == 1:
+		menu_note.text = "Escape: Pellegrini contro Enforcers, identità segreta e fuga oltre Giove."
 	else:
 		menu_note.text = "Grand Tour disponibile per %d giocatori in modalità hot-seat." % active_players
 
@@ -191,10 +207,10 @@ func _start_from_menu() -> void:
 		var candidate := player_name_fields[i].text.strip_edges()
 		normalized.append(candidate if candidate != "" else "Giocatore %d" % (i + 1))
 		player_types.append("human" if player_type_fields[i].selected == 0 else "ai")
-	state = GrandTourDevRef.create_state(normalized)
+	state = EscapeScenarioRef.create_state(normalized) if selected_scenario == 1 else GrandTourDevRef.create_state(normalized)
 	state.player_types = player_types
 	board.selected_ship = state.ships[0].id
-	main_title.text = "  TRIPLANETARY\n  GRAND TOUR · HOT-SEAT %d GIOCATORI" % normalized.size()
+	main_title.text = "  TRIPLANETARY\n  %s · HOT-SEAT %d GIOCATORI" % ["ESCAPE" if selected_scenario == 1 else "GRAND TOUR", normalized.size()]
 	menu_overlay.visible = false
 	_refresh()
 
@@ -234,13 +250,17 @@ func _refresh() -> void:
 	for child in ships_box.get_children(): child.queue_free()
 	for ship: Dictionary in state.ships:
 		if ship.owner != state.segment and not state.get("knowledge", {}).get(state.segment, {}).get(ship.id, false): continue
-		var state_text: String = "distrutta" if ship.destroyed else ("a terra: " + ship.landed_at if ship.get("landed_at", "") != "" else "in volo")
+		var state_text: String = "fuggita" if ship.get("escaped", false) else ("catturata" if ship.get("captured", false) else ("distrutta" if ship.destroyed else ("a terra: " + ship.landed_at if ship.get("landed_at", "") != "" else "in volo")))
 		var planned: Array = state.commands.get(ship.id, {}).get("thrust_steps", [])
 		var velocity: Vector2i = ship.velocity
 		var fuel_text := "illimitato" if ship.get("infinite_fuel", false) else str(ship.fuel)
-		var button := Button.new(); button.text = "%s [%s]  |  Fuel %s  |  Vettore (%d,%d)  |  %s" % [ship.name, ship.owner, fuel_text, velocity.x, velocity.y, state_text]; button.tooltip_text = "Spinte pianificate: %d. Corpi visitati: %d." % [planned.size(), ship.visited_bodies.size()]; button.alignment = HORIZONTAL_ALIGNMENT_LEFT; button.pressed.connect(_select.bind(ship.id)); ships_box.add_child(button)
+		var display_name: String = ship.name
+		if state.get("scenario", "") == "escape" and ship.owner == "P1" and ship.get("secret_cargo", false) and (state.segment == "P1" or ship.get("inspected", false)): display_name += " · FUGGITIVI"
+		elif state.get("scenario", "") == "escape" and ship.owner == "P1" and ship.get("inspected", false): display_name += " · ESCA"
+		var button := Button.new(); button.text = "%s [%s]  |  Fuel %s  |  Vettore (%d,%d)  |  %s" % [display_name, ship.owner, fuel_text, velocity.x, velocity.y, state_text]; button.tooltip_text = "Spinte pianificate: %d. Corpi visitati: %d." % [planned.size(), ship.visited_bodies.size()]; button.alignment = HORIZONTAL_ALIGNMENT_LEFT; button.pressed.connect(_select.bind(ship.id)); ships_box.add_child(button)
 	var entries: Array = state.log.duplicate(); entries.reverse(); log_label.text = "Nessun evento registrato." if entries.is_empty() else "\n\n".join(entries)
 	var selected := _selected()
+	_refresh_target_picker(selected)
 	overload_button.text = "Sovraccarico: %s" % ("ATTIVO" if overload_planning else "spento")
 	overload_button.disabled = not GameRulesRef.can_overload(selected) or state.phase != "astrogation"
 	var command: Dictionary = state.commands.get(selected.id, {})
@@ -253,11 +273,16 @@ func _refresh() -> void:
 	for control in torpedo_controls: control.visible = show_torpedo
 	var combat_pending: bool = not state.pending_combat.is_empty()
 	attack_button.visible = state.phase == "combat" and not combat_pending and selected.owner == state.segment and not selected.destroyed and not selected.commercial and selected.get("landed_at", "") == "" and _enemy_target(selected.owner) != ""
+	ram_button.visible = state.get("scenario", "") == "escape" and state.phase == "astrogation" and selected.owner == "P1" and selected.get("landed_at", "") == "" and _enemy_target(selected.owner) != ""
+	inspect_button.visible = state.get("scenario", "") == "escape" and state.phase == "resupply" and selected.owner == "P2" and _matching_pilgrim(selected) != ""
 	counter_yes_button.visible = combat_pending
 	counter_no_button.visible = combat_pending
 	advance_button.disabled = combat_pending
 
 func _select(id: String) -> void: board.selected_ship = id; overload_planning = false; _refresh()
+func _target_selected(index: int) -> void:
+	selected_target_id = str(target_picker.get_item_metadata(index)) if index >= 0 else ""
+	_refresh()
 func _set_thrust(direction: int) -> void:
 	var ship := _selected()
 	if state.phase != "astrogation" or ship.owner != state.segment or ship.fuel <= 0 or ship.destroyed or ship.get("landed_at", "") != "": return
@@ -307,6 +332,22 @@ func _attack() -> void:
 	_refresh()
 	if not state.pending_combat.is_empty():
 		_show_privacy(state.pending_combat.defender, "È richiesta una decisione riservata sul contrattacco.")
+func _inspect_or_capture() -> void:
+	var inspector := _selected()
+	var target_id := _matching_pilgrim(inspector)
+	if target_id == "": return
+	state = GameRulesRef.inspect_or_capture(state, inspector.id, target_id)
+	ReplayRulesRef.record(state, "Ispezione Enforcer")
+	_refresh()
+func _plan_ram() -> void:
+	var ship := _selected()
+	var target_id := _enemy_target(ship.owner)
+	if target_id == "": return
+	var command: Dictionary = state.commands.get(ship.id, {})
+	command.ram_target_id = target_id
+	state.commands[ship.id] = command
+	state.log.append("Speronamento pianificato da %s" % ship.name)
+	_refresh()
 func _counter(enabled: bool) -> void:
 	state = GameRulesRef.respond_to_attack(state, enabled)
 	ReplayRulesRef.record(state, "Risoluzione combattimento")
@@ -388,6 +429,10 @@ func _refresh_replay() -> void:
 	replay_text.text = ReplayRulesRef.describe(state.replay_frames[replay_cursor])
 
 func _open_help() -> void:
+	if state.get("scenario", "") == "escape":
+		help_body.text = "OBIETTIVO · ESCAPE\nI Pellegrini devono portare il trasporto con i fuggitivi fuori dal bordo oltre Giove. Per la vittoria decisiva deve restare carburante sufficiente ad annullare il vettore, più un punto.\n\nPELLEGRINI — Tre trasporti partono dalla Terra. Solo il giocatore P1 vede quale contiene i fuggitivi. Possono speronare, ma non usare mine o siluri.\n\nENFORCERS — Una corvetta orbita la Terra e un corsaro orbita Venere. Seleziona il bersaglio nel blocco Azioni. A rotta e posizione coincidenti, durante Rifornimento usa Ispeziona/Cattura. Un trasporto disabilitato con i fuggitivi può essere catturato e riportato a Terra, Venere o Io.\n\nVITTORIA — La fuga può essere decisiva o marginale; la distruzione di un Enforcer durante il sacrificio dà una vittoria morale ai Pellegrini. Cattura e ritorno a una base danno vittoria decisiva agli Enforcers.\n\nMAPPA — Rotella per zoomare; trascina per scorrere. Vettore azzurro, spinta gialla, rotta percorsa continua."
+	else:
+		help_body.text = "OBIETTIVO · GRAND TOUR\nAttraversa almeno un campo di gravità piena di ogni corpo e torna ad atterrare sulla Terra.\n\n1 · ASTROGAZIONE — Seleziona la nave e una direzione di spinta, oppure Nessuna spinta. Il vettore è azzurro tratteggiato; la spinta è il tratteggio giallo più fine e termina nell'esagono di arrivo. La rotta effettivamente percorsa resta come arco continuo e spesso.\n\n2 · ORDNANCE — Se disponibili, lancia mine, siluri o testate.\n\n3 · MOVIMENTO — Premi Avanza fase: inerzia, spinta e gravità pendente vengono applicate.\n\n4 · COMBATTIMENTO — Seleziona il bersaglio, dichiara l’attacco e lascia scegliere il contrattacco.\n\n5 · RIFORNIMENTO — Atterrando su Terra, Venere, Marte o Callisto recuperi carburante e sovraccarico.\n\nMAPPA — Usa la rotella per ingrandire o ridurre e trascina con il tasto sinistro o centrale.\n\nDECOLLO — Premi Decolla, poi pianifica almeno una spinta nel turno successivo: senza spinta la nave ricade."
 	help_overlay.visible = true
 	help_overlay.move_to_front()
 
@@ -411,5 +456,32 @@ func _landable_body(ship: Dictionary) -> String:
 
 func _enemy_target(owner: String) -> String:
 	for ship: Dictionary in state.ships:
-		if ship.owner != owner and not ship.destroyed and ship.get("landed_at", "") == "": return ship.id
+		if ship.id == selected_target_id and ship.owner != owner and not ship.destroyed and not ship.get("escaped", false) and not ship.get("captured", false): return ship.id
+	for ship: Dictionary in state.ships:
+		if ship.owner != owner and not ship.destroyed and not ship.get("escaped", false) and not ship.get("captured", false) and ship.get("landed_at", "") == "": return ship.id
+	return ""
+
+func _refresh_target_picker(selected: Dictionary) -> void:
+	var prior := selected_target_id
+	target_picker.clear()
+	for ship: Dictionary in state.ships:
+		if ship.owner == selected.owner or ship.destroyed or ship.get("escaped", false) or ship.get("captured", false): continue
+		if not state.get("knowledge", {}).get(selected.owner, {}).get(ship.id, false): continue
+		target_picker.add_item(ship.name)
+		target_picker.set_item_metadata(target_picker.item_count - 1, ship.id)
+	var selected_index := -1
+	for i in range(target_picker.item_count):
+		if str(target_picker.get_item_metadata(i)) == prior: selected_index = i
+	if selected_index < 0 and target_picker.item_count > 0: selected_index = 0
+	if selected_index >= 0:
+		target_picker.select(selected_index)
+		selected_target_id = str(target_picker.get_item_metadata(selected_index))
+	else: selected_target_id = ""
+	target_picker.visible = target_picker.item_count > 0
+
+func _matching_pilgrim(inspector: Dictionary) -> String:
+	for ship: Dictionary in state.ships:
+		if ship.id == selected_target_id and ship.owner == "P1" and not ship.destroyed and not ship.get("escaped", false) and not ship.get("captured", false) and ship.position == inspector.position and ship.velocity == inspector.velocity: return ship.id
+	for ship: Dictionary in state.ships:
+		if ship.owner == "P1" and not ship.destroyed and not ship.get("escaped", false) and not ship.get("captured", false) and ship.position == inspector.position and ship.velocity == inspector.velocity: return ship.id
 	return ""

@@ -24,7 +24,8 @@ Aggiornato al 26 ottobre 2026.
 - Regole motore per carico, capienza, trasferimento di materiali e carburante fra navi sulla stessa rotta.
 - Rilevamento persistente da navi e basi, occultamento dopo l'atterraggio in una base amica e blocco del fuoco contro bersagli non rilevati.
 - Schermata di passaggio hot-seat al cambio giocatore e prima della scelta riservata del contrattacco.
-- Menu iniziale blu-verde/rosso con catalogo descrittivo degli otto scenari e sei posti configurabili per nome e tipo (umano, IA o nessuno); solo Grand Tour hot-seat umano è abilitato finché IA e regole specifiche degli altri scenari non sono complete.
+- Menu iniziale blu-verde/rosso con catalogo descrittivo degli otto scenari e sei posti configurabili per nome e tipo (umano, IA o nessuno); Grand Tour ed Escape sono abilitati in hot-seat umano.
+- Escape include setup canonico, identità segreta dei fuggitivi, bersaglio selezionabile, ispezione/cattura, speronamento, fuga oltre Giove e livelli di vittoria.
 - Plancia pubblica ridisegnata in stile astronomico scuro, anteprima tratteggiata del movimento e rotta percorsa persistente per ogni nave.
 - Plancia navigabile con zoom alla posizione del puntatore e trascinamento; legenda sempre visibile.
 - Vettore inerziale azzurro tratteggiato, spinta gialla più fine con marcatore esagonale e rotta effettiva continua, spessa e incurvata tra gli esagoni.
@@ -37,7 +38,7 @@ Aggiornato al 26 ottobre 2026.
 - Replay navigabile per fotogrammi, con stato delle navi e ultimo evento.
 - Cataloghi dati separati e verificati per otto scenari, navi, equipaggiamento, costi e capacità dell'Updated Second Edition.
 - Grand Tour configurabile da 2 a 6 giocatori.
-- 36 test headless.
+- 41 test headless.
 
 ## Ancora incompleto
 

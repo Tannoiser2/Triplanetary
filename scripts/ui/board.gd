@@ -93,6 +93,7 @@ func _draw() -> void:
 		draw_circle(p, 13 if body.id == "sol" else 9, Color("f6b94c") if body.id == "sol" else Color("dceaf3"))
 		draw_string(ThemeDB.fallback_font, p + Vector2(13, -11), body.name, HORIZONTAL_ALIGNMENT_LEFT, -1, 13, Color("d8e7f4"))
 	for ship: Dictionary in state.ships:
+		if ship.get("escaped", false) or ship.get("captured", false): continue
 		if ship.owner != state.segment and not state.get("knowledge", {}).get(state.segment, {}).get(ship.id, false): continue
 		var p := axial_to_pixel(ship.position) + Vector2(-5 if ship.owner == "P1" else 5, 0)
 		var color: Color = PLAYER_COLORS[clampi(int(ship.owner.trim_prefix("P")) - 1, 0, PLAYER_COLORS.size() - 1)]

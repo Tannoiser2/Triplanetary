@@ -5,7 +5,7 @@
 | Scenario | Giocatori | Durata | Stato dati |
 |---|---:|---|---|
 | Grand Tour (2037) | multi | non indicata | primo MVP; regole complete, coordinate da verificare |
-| Escape | 2 | breve | trascritto in specifica |
+| Escape | 2 | breve | giocabile e coperto da test deterministici |
 | Lateral 7 | 2 | breve | trascritto in specifica |
 | Nova | 3 | breve | trascritto in specifica |
 | Retribution | 2 | breve | trascritto in specifica |
@@ -36,7 +36,7 @@ Schema dati previsto:
 
 ### Escape
 
-Pilgrims: 3 trasporti su Terra, uno segreto con fuggitivi. Enforcers: corvetta in orbita Terra, corsair in orbita Venere. Niente mine/siluri; Pilgrims possono speronare; basi solo Terra/Venere/Io, tutte Enforcer, difese spente. Nessun limite. Livelli vittoria dipendono da uscita oltre Giove e carburante per fermarsi +1, cattura/distruzione. `TODO-RULE`: formalizzare “oltre Giove” sulla geometria del bordo.
+Pilgrims: 3 trasporti su Terra, uno segreto con fuggitivi. Enforcers: corvetta in orbita Terra, corsair in orbita Venere. Niente mine/siluri; Pilgrims possono speronare; basi solo Terra/Venere/Io, tutte Enforcer, difese spente. Nessun limite. Livelli vittoria dipendono da uscita oltre Giove e carburante per fermarsi +1, cattura/distruzione. Sulla plancia canonica Giove occupa il margine destro: “oltre Giove” è normalizzato come uscita dal bordo destro; ogni altra uscita elimina normalmente la nave.
 
 ### Lateral 7
 
