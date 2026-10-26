@@ -59,7 +59,7 @@ static func create_state(player_names: Array = ["Giocatore 1", "Giocatore 2"]) -
 			if ship.owner != observer: knowledge[observer][ship.id] = true
 	var state := {
 		"scenario": "grand-tour-2037", "ruleset": "updated-second-edition", "seed": 2037,
-		"rng_state": 2037, "turn": 1, "segment": "P1", "player_order": player_order, "player_names": player_names.duplicate(), "phase": "astrogation", "commands": {},
+		"rng_state": 2037, "turn": 1, "segment": "P1", "player_order": player_order, "player_names": player_names.duplicate(), "player_types": player_names.map(func(_name): return "human"), "phase": "astrogation", "commands": {},
 		"pending_combat": {}, "ordnance": [], "asteroids": asteroids, "special_asteroids": special_asteroids, "next_entity_id": 1, "replay_frames": [],
 		"knowledge": knowledge,
 		"log": [], "events": [], "winner": "",

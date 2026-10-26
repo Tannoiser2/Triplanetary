@@ -6,7 +6,7 @@ Prototipo locale e specifiche italiane per una versione digitale fedele all'**Up
 
 - Motore GDScript: coordinate esagonali assiali, inerzia, spinta, carburante, gravità piena e debole differita, sovraccarico, decollo/atterraggio, collisioni e tabella di combattimento.
 - Prototipo Godot hot-seat multigiocatore con sequenza di fasi, rendering procedurale e registro eventi.
-- Menu iniziale, Grand Tour da 2 a 6 giocatori, guida integrata, plancia con zoom/scorrimento, vettore e spinta distinti, e traccia curva permanente dei movimenti.
+- Menu iniziale nella palette della copertina, scenari a schede descrittive, sei posti equipaggio configurabili, guida integrata, plancia con zoom/scorrimento, vettore e spinta distinti, e traccia curva permanente dei movimenti.
 - Scenario `Grand Tour` giocabile sulla **development map**, con partenza atterrata, visite, rifornimento, ritorno e vittoria. La trascrizione completa della plancia deve ancora essere verificata.
 - Salvataggio/caricamento locale, autosave, replay a fotogrammi e scambio di salvataggi JSON dagli appunti. Sono operativi combattimento 1v1, contrattacco, danni, ordigni vettoriali, asteroidi, rilevamento, privacy hot-seat, basi planetarie e regole di carico/trasferimento. Attacchi combinati, interfaccia logistica completa e i sette scenari successivi restano nel backlog e non vengono presentati come giocabili.
 - Lo stato preciso, senza sovrastimare la completezza, è in `STATUS.md`.

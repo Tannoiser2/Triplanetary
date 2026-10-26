@@ -30,9 +30,21 @@ var replay_overlay: ColorRect
 var replay_text: Label
 var replay_cursor := 0
 var menu_overlay: ColorRect
-var scenario_picker: OptionButton
-var player_count: SpinBox
-var player_names_input: LineEdit
+const SCENARIO_TITLES := ["GRAND TOUR · 2037 AD", "ESCAPE", "LATERAL 7", "NOVA", "RETRIBUTION", "THE FLEET MUTINY", "INTERPLANETARY WAR", "PROSPECTING"]
+const SCENARIO_DESCRIPTIONS := [
+	"Gara orbitale: visita ogni campo di gravità piena e torna sulla Terra.",
+	"Tre trasporti tentano la fuga mentre le pattuglie danno la caccia.",
+	"Pirati, falsi bersagli e una nave di linea nel sistema interno.",
+	"Tre fazioni si contendono il sistema mentre incombe una bomba nova.",
+	"Una successione di corvette affronta le unità degli Enforcers.",
+	"La flotta si divide: identità ribelli segrete e basi orbitali.",
+	"Campagna economica e militare fra mondi terrestri e ribelli.",
+	"Esplorazione mineraria, mercati di Ceres e Luna e cristalli CT."
+]
+var scenario_buttons: Array[Button] = []
+var selected_scenario := 0
+var player_name_fields: Array[LineEdit] = []
+var player_type_fields: Array[OptionButton] = []
 var menu_note: Label
 var start_button: Button
 var main_title: Label
@@ -116,26 +128,30 @@ func _build_help_overlay() -> void:
 	var close := Button.new(); close.text = "HO CAPITO"; close.custom_minimum_size.y = 56; close.pressed.connect(_close_help); card.add_child(close)
 
 func _build_main_menu() -> void:
-	menu_overlay = ColorRect.new(); menu_overlay.color = Color("050b17ff"); menu_overlay.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT); menu_overlay.mouse_filter = Control.MOUSE_FILTER_STOP; add_child(menu_overlay)
-	var layout := HBoxContainer.new(); layout.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT, Control.PRESET_MODE_MINSIZE, 54); layout.add_theme_constant_override("separation", 48); menu_overlay.add_child(layout)
-	var art_panel := VBoxContainer.new(); art_panel.custom_minimum_size.x = 430; layout.add_child(art_panel)
-	var cover := TextureRect.new(); cover.expand_mode = TextureRect.EXPAND_FIT_WIDTH_PROPORTIONAL; cover.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED; cover.size_flags_vertical = Control.SIZE_EXPAND_FILL; art_panel.add_child(cover)
+	menu_overlay = ColorRect.new(); menu_overlay.color = Color("061526ff"); menu_overlay.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT); menu_overlay.mouse_filter = Control.MOUSE_FILTER_STOP; add_child(menu_overlay)
+	var layout := HBoxContainer.new(); layout.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT, Control.PRESET_MODE_MINSIZE, 34); layout.add_theme_constant_override("separation", 34); menu_overlay.add_child(layout)
+	var art_panel := VBoxContainer.new(); art_panel.custom_minimum_size.x = 360; layout.add_child(art_panel)
+	var cover := TextureRect.new(); cover.expand_mode = TextureRect.EXPAND_IGNORE_SIZE; cover.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED; cover.size_flags_vertical = Control.SIZE_EXPAND_FILL; art_panel.add_child(cover)
 	cover.texture = load("res://assets/ui/original-cover.webp")
 	var rights := Label.new(); rights.text = "Edizione digitale non ufficiale · uso personale\nCopertina fornita dall’utente; diritti dell’opera ai rispettivi autori ed editori."; rights.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART; rights.modulate = Color("9db2c6"); art_panel.add_child(rights)
-	var form := VBoxContainer.new(); form.size_flags_horizontal = Control.SIZE_EXPAND_FILL; form.alignment = BoxContainer.ALIGNMENT_CENTER; layout.add_child(form)
-	var brand := Label.new(); brand.text = "TRIPLANETARY"; brand.add_theme_font_size_override("font_size", 48); brand.modulate = Color("e7f5ff"); form.add_child(brand)
-	var subtitle := Label.new(); subtitle.text = "COMBATTIMENTO SPAZIALE NEL SISTEMA SOLARE"; subtitle.add_theme_font_size_override("font_size", 16); subtitle.modulate = Color("74c9e8"); form.add_child(subtitle)
-	var spacer := Control.new(); spacer.custom_minimum_size.y = 32; form.add_child(spacer)
-	var scenario_label := Label.new(); scenario_label.text = "SCENARIO"; form.add_child(scenario_label)
-	scenario_picker = OptionButton.new(); scenario_picker.custom_minimum_size.y = 48; form.add_child(scenario_picker)
-	for title in ["Grand Tour, 2037 AD", "Escape", "Lateral 7", "Nova", "Retribution", "The Fleet Mutiny", "Interplanetary War", "Prospecting"]: scenario_picker.add_item(title)
-	scenario_picker.item_selected.connect(_scenario_selected)
-	var count_label := Label.new(); count_label.text = "GIOCATORI"; form.add_child(count_label)
-	player_count = SpinBox.new(); player_count.min_value = 2; player_count.max_value = 6; player_count.value = 2; player_count.custom_minimum_size.y = 44; form.add_child(player_count)
-	var names_label := Label.new(); names_label.text = "NOMI (separati da virgola)"; form.add_child(names_label)
-	player_names_input = LineEdit.new(); player_names_input.text = "Giocatore 1, Giocatore 2"; player_names_input.custom_minimum_size.y = 44; form.add_child(player_names_input)
-	menu_note = Label.new(); menu_note.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART; menu_note.custom_minimum_size.y = 75; form.add_child(menu_note)
-	start_button = Button.new(); start_button.text = "INIZIA PARTITA"; start_button.custom_minimum_size.y = 64; start_button.pressed.connect(_start_from_menu); form.add_child(start_button)
+	var form_scroll := ScrollContainer.new(); form_scroll.size_flags_horizontal = Control.SIZE_EXPAND_FILL; form_scroll.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED; layout.add_child(form_scroll)
+	var form := VBoxContainer.new(); form.size_flags_horizontal = Control.SIZE_EXPAND_FILL; form.add_theme_constant_override("separation", 5); form_scroll.add_child(form)
+	var display_font := FontVariation.new(); display_font.base_font = ThemeDB.fallback_font; display_font.variation_embolden = 1.1; display_font.variation_transform = Transform2D(Vector2(1, 0), Vector2(-0.13, 1), Vector2.ZERO)
+	var brand := Label.new(); brand.text = "TRIPLANETARY"; brand.add_theme_font_override("font", display_font); brand.add_theme_font_size_override("font_size", 52); brand.add_theme_color_override("font_color", Color("19e18e")); brand.add_theme_color_override("font_outline_color", Color("d6343d")); brand.add_theme_constant_override("outline_size", 3); form.add_child(brand)
+	var subtitle := Label.new(); subtitle.text = "SPACE COMBAT IN THE SOLAR SYSTEM"; subtitle.add_theme_font_size_override("font_size", 17); subtitle.add_theme_color_override("font_color", Color("f4f6e9")); form.add_child(subtitle)
+	var scenario_label := _menu_heading("SCEGLI LO SCENARIO"); form.add_child(scenario_label)
+	var scenario_grid := GridContainer.new(); scenario_grid.columns = 2; scenario_grid.add_theme_constant_override("h_separation", 8); scenario_grid.add_theme_constant_override("v_separation", 5); form.add_child(scenario_grid)
+	for i in range(SCENARIO_TITLES.size()):
+		var scenario_button := Button.new(); scenario_button.text = "%s\n%s" % [SCENARIO_TITLES[i], SCENARIO_DESCRIPTIONS[i]]; scenario_button.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART; scenario_button.alignment = HORIZONTAL_ALIGNMENT_LEFT; scenario_button.custom_minimum_size = Vector2(330, 58); scenario_button.toggle_mode = true; scenario_button.pressed.connect(_scenario_selected.bind(i)); scenario_grid.add_child(scenario_button); scenario_buttons.append(scenario_button)
+	var players_label := _menu_heading("EQUIPAGGI"); form.add_child(players_label)
+	var players_grid := GridContainer.new(); players_grid.columns = 6; players_grid.add_theme_constant_override("h_separation", 8); players_grid.add_theme_constant_override("v_separation", 6); form.add_child(players_grid)
+	for i in range(6):
+		var seat := Label.new(); seat.text = "P%d" % (i + 1); seat.custom_minimum_size.x = 32; seat.modulate = Color("33d2bf"); players_grid.add_child(seat)
+		var name_field := LineEdit.new(); name_field.text = "Giocatore %d" % (i + 1); name_field.placeholder_text = "Nome"; name_field.custom_minimum_size = Vector2(175, 38); players_grid.add_child(name_field); player_name_fields.append(name_field)
+		var type_field := OptionButton.new(); type_field.add_item("UMANO"); type_field.add_item("IA"); type_field.add_item("NESSUNO"); type_field.select(0 if i < 2 else 2); type_field.custom_minimum_size = Vector2(108, 38); type_field.item_selected.connect(_player_setup_changed); players_grid.add_child(type_field); player_type_fields.append(type_field)
+	menu_note = Label.new(); menu_note.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART; menu_note.custom_minimum_size.y = 36; form.add_child(menu_note)
+	start_button = Button.new(); start_button.text = "INIZIA LA MISSIONE"; start_button.custom_minimum_size.y = 46; start_button.pressed.connect(_start_from_menu); form.add_child(start_button)
+	_apply_menu_theme(menu_overlay)
 	_scenario_selected(0)
 
 func _show_main_menu() -> void:
@@ -143,23 +159,53 @@ func _show_main_menu() -> void:
 	menu_overlay.move_to_front()
 
 func _scenario_selected(index: int) -> void:
-	var playable := index == 0
+	selected_scenario = index
+	for i in range(scenario_buttons.size()): scenario_buttons[i].button_pressed = i == index
+	_refresh_menu_availability()
+
+func _player_setup_changed(_index: int) -> void:
+	_refresh_menu_availability()
+
+func _refresh_menu_availability() -> void:
+	var active_players := 0
+	var has_ai := false
+	for field in player_type_fields:
+		if field.selected != 2: active_players += 1
+		if field.selected == 1: has_ai = true
+	var playable := selected_scenario == 0 and active_players >= 2 and not has_ai
 	start_button.disabled = not playable
-	player_count.editable = playable
-	menu_note.text = "Scenario completo disponibile: gara orbitale, carburante, gravità, combattimento e ritorno sulla Terra." if playable else "Scenario trascritto fedelmente dalle regole, ma non ancora abilitato: mancano le meccaniche specifiche necessarie."
+	if selected_scenario != 0:
+		menu_note.text = "Scenario presente nelle regole ma non ancora giocabile in questa build."
+	elif has_ai:
+		menu_note.text = "La modalità IA è predisposta nel menu, ma il pilota automatico fedele alle regole è ancora da implementare."
+	elif active_players < 2:
+		menu_note.text = "Seleziona almeno due giocatori umani."
+	else:
+		menu_note.text = "Grand Tour disponibile per %d giocatori in modalità hot-seat." % active_players
 
 func _start_from_menu() -> void:
-	var requested := int(player_count.value)
-	var names := PackedStringArray(player_names_input.text.split(",", false))
 	var normalized := []
-	for i in range(requested):
-		var candidate := names[i].strip_edges() if i < names.size() else ""
+	var player_types := []
+	for i in range(player_type_fields.size()):
+		if player_type_fields[i].selected == 2: continue
+		var candidate := player_name_fields[i].text.strip_edges()
 		normalized.append(candidate if candidate != "" else "Giocatore %d" % (i + 1))
+		player_types.append("human" if player_type_fields[i].selected == 0 else "ai")
 	state = GrandTourDevRef.create_state(normalized)
+	state.player_types = player_types
 	board.selected_ship = state.ships[0].id
-	main_title.text = "  TRIPLANETARY\n  GRAND TOUR · HOT-SEAT %d GIOCATORI" % requested
+	main_title.text = "  TRIPLANETARY\n  GRAND TOUR · HOT-SEAT %d GIOCATORI" % normalized.size()
 	menu_overlay.visible = false
 	_refresh()
+
+func _menu_heading(text: String) -> Label:
+	var label := Label.new(); label.text = text; label.add_theme_font_size_override("font_size", 18); label.add_theme_color_override("font_color", Color("f04b4f")); return label
+
+func _apply_menu_theme(root: Control) -> void:
+	var normal := StyleBoxFlat.new(); normal.bg_color = Color("09243a"); normal.border_color = Color("197e82"); normal.set_border_width_all(2); normal.corner_radius_top_left = 5; normal.corner_radius_top_right = 5; normal.corner_radius_bottom_left = 5; normal.corner_radius_bottom_right = 5; normal.content_margin_left = 12; normal.content_margin_right = 12
+	var hover := normal.duplicate(); hover.bg_color = Color("0c3a4a"); hover.border_color = Color("33d2bf")
+	var pressed := normal.duplicate(); pressed.bg_color = Color("17394a"); pressed.border_color = Color("ef4147"); pressed.set_border_width_all(3)
+	var theme := Theme.new(); theme.set_stylebox("normal", "Button", normal); theme.set_stylebox("hover", "Button", hover); theme.set_stylebox("pressed", "Button", pressed); theme.set_stylebox("hover_pressed", "Button", pressed); theme.set_stylebox("focus", "Button", pressed); theme.set_color("font_color", "Button", Color("eaf9f4")); theme.set_color("font_hover_color", "Button", Color("ffffff")); theme.set_color("font_pressed_color", "Button", Color("ffffff")); theme.set_font_size("font_size", "Button", 14); root.theme = theme
 
 func _build_privacy_overlay() -> void:
 	privacy_overlay = ColorRect.new(); privacy_overlay.color = Color("070b16f2"); privacy_overlay.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT); privacy_overlay.mouse_filter = Control.MOUSE_FILTER_STOP; privacy_overlay.visible = false; add_child(privacy_overlay)
