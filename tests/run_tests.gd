@@ -10,6 +10,7 @@ const LogisticsRulesRef = preload("res://scripts/engine/logistics.gd")
 const BaseRulesRef = preload("res://scripts/engine/bases.gd")
 const ReplayRulesRef = preload("res://scripts/engine/replay.gd")
 const ShipFactoryRef = preload("res://scripts/data/ship_factory.gd")
+const BoardRef = preload("res://scripts/ui/board.gd")
 
 var failures := 0
 
@@ -100,7 +101,10 @@ func _init() -> void:
 	var trail_ship: Dictionary = ShipFactoryRef.create("trail", "P1", "corvette", Vector2i.ZERO); trail_ship.trail = [Vector2i.ZERO]; trail_ship.velocity = Vector2i(1,0)
 	trail_ship = GameRulesRef.move_ship(trail_ship, {}, [], 1)
 	_check(trail_ship.trail == [Vector2i.ZERO, Vector2i(1,0)], "rotta percorsa conservata per il tracciamento")
-	if failures == 0: print("OK: 35 test")
+	var board := BoardRef.new(); board.size = Vector2(800, 600); var old_zoom: float = board.camera_zoom; board._zoom_at(Vector2(400,300), 1.18)
+	_check(board.camera_zoom > old_zoom, "zoom plancia mantiene un livello navigabile")
+	board.free()
+	if failures == 0: print("OK: 36 test")
 	quit(failures)
 
 func _check(value: bool, label: String) -> void:

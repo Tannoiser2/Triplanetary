@@ -26,6 +26,9 @@ Aggiornato al 26 ottobre 2026.
 - Schermata di passaggio hot-seat al cambio giocatore e prima della scelta riservata del contrattacco.
 - Menu iniziale con catalogo degli otto scenari, scelta da 2 a 6 giocatori e nomi; solo Grand Tour è abilitato finché le regole specifiche degli altri scenari non sono complete.
 - Plancia pubblica ridisegnata in stile astronomico scuro, anteprima tratteggiata del movimento e rotta percorsa persistente per ogni nave.
+- Plancia navigabile con zoom alla posizione del puntatore e trascinamento; legenda sempre visibile.
+- Vettore inerziale azzurro tratteggiato, spinta gialla più fine con marcatore esagonale e rotta effettiva continua, spessa e incurvata tra gli esagoni.
+- Pannello laterale separato in Stato e navi, Vettore e spinta, Azioni e Registro; elenchi e log hanno scorrimento indipendente.
 - Guida “Come si gioca” e suggerimento contestuale per ciascuna fase.
 - Salvataggio portabile JSON tramite appunti, con import e preservazione dei vettori esagonali.
 - Basi planetarie come entità dati e rifornimento solo dopo un atterraggio valido; fondazione del motore per basi orbitali/asteroidali e difese.
@@ -34,7 +37,7 @@ Aggiornato al 26 ottobre 2026.
 - Replay navigabile per fotogrammi, con stato delle navi e ultimo evento.
 - Cataloghi dati separati e verificati per otto scenari, navi, equipaggiamento, costi e capacità dell'Updated Second Edition.
 - Grand Tour configurabile da 2 a 6 giocatori.
-- 35 test headless.
+- 36 test headless.
 
 ## Ancora incompleto
 
