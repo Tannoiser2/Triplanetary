@@ -41,6 +41,40 @@ var toast: Label
 var toast_tween: Tween
 var thinking: Label
 var detect_toggle: Button
+var trails_toggle: Button
+var drift_toggle: Button
+const SETTINGS_PATH := "user://impostazioni.cfg"
+
+## Interruttore di visualizzazione ricordato fra una sessione e l'altra.
+func _view_toggle(text: String, tip_s: String, key: String, default_on: bool) -> Button:
+	var cfg := ConfigFile.new()
+	cfg.load(SETTINGS_PATH)
+	var on: bool = cfg.get_value("vista", key, default_on)
+	var b := Button.new()
+	b.text = text
+	b.tooltip_text = tip_s
+	b.toggle_mode = true
+	b.add_theme_font_size_override("font_size", 14)
+	b.add_theme_stylebox_override("pressed", UITheme.box(Color("123a3a"), UITheme.CYAN, 5, 2, 12))
+	b.add_theme_stylebox_override("hover_pressed", UITheme.box(Color("16484a"), UITheme.CYAN, 5, 2, 12))
+	b.add_theme_color_override("font_pressed_color", UITheme.CYAN)
+	b.add_theme_color_override("font_hover_pressed_color", Color.WHITE)
+	b.toggled.connect(func(v):
+		match key:
+			"trails": board.show_trails = v
+			"drift": board.show_drift = v
+			"radar": board.show_detection = v
+		var c2 := ConfigFile.new()
+		c2.load(SETTINGS_PATH)
+		c2.set_value("vista", key, v)
+		c2.save(SETTINGS_PATH)
+		board.queue_redraw())
+	b.button_pressed = on
+	match key:
+		"trails": board.show_trails = on
+		"drift": board.show_drift = on
+		"radar": board.show_detection = on
+	return b
 
 # schermate
 var menu: Control
@@ -123,10 +157,6 @@ func _build_hud() -> void:
 	player_label = UITheme.label("", 17, UITheme.TEXT, UITheme.body_bold)
 	chip_row.add_child(player_label)
 	row.add_child(player_chip)
-	detect_toggle = _icon_button("RADAR", "Mostra il raggio dei rilevatori delle basi (5 esagoni)")
-	detect_toggle.toggle_mode = true
-	detect_toggle.toggled.connect(func(on): board.show_detection = on; board.queue_redraw())
-	row.add_child(detect_toggle)
 	var guide := _icon_button("GUIDA", "Regole e comandi")
 	guide.pressed.connect(func(): help.visible = true)
 	row.add_child(guide)
@@ -175,6 +205,12 @@ func _build_hud() -> void:
 	var log_btn := Button.new(); log_btn.text = "REGISTRO"; log_btn.toggle_mode = true; log_btn.button_pressed = true
 	log_btn.toggled.connect(func(on): log_panel.visible = on)
 	brow.add_child(log_btn)
+	trails_toggle = _view_toggle("ROTTE", "Rotte percorse da ogni nave, con il giorno del movimento (tasto R)", "trails", true)
+	brow.add_child(trails_toggle)
+	drift_toggle = _view_toggle("DERIVA", "Vettori di deriva di tutte le navi visibili: dove andrebbero senza spinte, con la gravità in arrivo in ambra (tasto D)", "drift", false)
+	brow.add_child(drift_toggle)
+	detect_toggle = _view_toggle("RADAR", "Raggio dei rilevatori delle basi, 5 esagoni (tasto V)", "radar", false)
+	brow.add_child(detect_toggle)
 	hint = RichTextLabel.new()
 	hint.bbcode_enabled = true
 	hint.fit_content = true
@@ -1716,7 +1752,7 @@ Mine (10 t) e testate (20 t) ereditano il vettore della nave, che deve cambiare 
 In Nova, Retribution, The Fleet Mutiny, Interplanetary War e Prospecting la partita comincia con la preparazione: scelte nel pannello a destra, acquisti con i pulsanti + e −, poi lo schieramento cliccando gli esagoni evidenziati in verde (il pulsante cambia il verso delle orbite). Nella guerra interplanetaria il cantiere si apre durante l'astrogazione o il rifornimento; in Fleet Mutiny, in fase di combattimento, una nave in orbita sopra un lato della Terra può sopprimerlo.
 
 [b][color=#ff9a5c]Comandi[/color][/b]
-Rotella: zoom · trascina: sposta la plancia · clic destro: annulla la selezione · Tab: nave successiva · barra spaziatrice: deriva · Invio: conferma la fase · F: adatta la plancia."""
+Rotella: zoom · trascina: sposta la plancia · R: rotte percorse · D: vettori di deriva · V: rilevatori · clic destro: annulla la selezione · Tab: nave successiva · barra spaziatrice: deriva · Invio: conferma la fase · F: adatta la plancia."""
 
 # ================================================================ menu principale
 
@@ -1908,6 +1944,9 @@ func _unhandled_input(event: InputEvent) -> void:
 			KEY_ENTER, KEY_KP_ENTER: _on_primary()
 			KEY_TAB: _select_next()
 			KEY_F: board.fit()
+			KEY_R: trails_toggle.button_pressed = not trails_toggle.button_pressed
+			KEY_D: drift_toggle.button_pressed = not drift_toggle.button_pressed
+			KEY_V: detect_toggle.button_pressed = not detect_toggle.button_pressed
 			KEY_ESCAPE:
 				sel = ""; mode = ""; attackers = []; targets = []
 				_refresh()

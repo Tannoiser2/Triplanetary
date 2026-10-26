@@ -32,6 +32,9 @@ Versione digitale per uso personale di *Triplanetary* (Game Designers' Workshop,
 | Confermare la fase | pulsante arancio in basso o `Invio` |
 | Zoom / spostamento | rotella / trascinamento, `F` per vedere tutta la plancia |
 | Annullare la selezione | clic destro o `Esc` |
+| Rotte percorse (scia di ogni nave) | pulsante **ROTTE** in basso o `R` |
+| Vettori di deriva (inerzia tratteggiata, gravità in arrivo in ambra, esagono d'arrivo senza spinte) | pulsante **DERIVA** o `D` |
+| Raggio dei rilevatori | pulsante **RADAR** o `V` |
 
 La guida completa è nel pulsante **GUIDA** del gioco.
 

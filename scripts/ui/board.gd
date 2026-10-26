@@ -13,6 +13,8 @@ var selected := ""
 var overlay: Dictionary = {}
 var show_detection := false
 var show_numbers := true
+var show_trails := true           # rotte percorse
+var show_drift := false           # vettori di deriva (inerzia + gravità, senza spinte)
 var safe_rect := Rect2()          # area dello schermo non coperta dall'interfaccia
 
 var zoom := 22.0
@@ -181,8 +183,9 @@ func _draw() -> void:
 	_draw_bases()
 	_draw_prospecting()
 	_draw_overlay_hexes()
-	_draw_histories()
+	if show_trails: _draw_histories()
 	_draw_ordnance()
+	if show_drift: _draw_drift()
 	_draw_predictions()
 	_draw_choices(false)
 	_draw_ships()
@@ -405,6 +408,46 @@ func _concealed(s: Dictionary) -> bool:
 	if s.owner == viewer: return false
 	if s.get("dummy", false): return true
 	return not state.knowledge.get(viewer, {}).get(s.id, false)
+
+## Vettori di deriva: dove andrebbe ogni nave visibile senza accendere i motori.
+## Tratteggio = inerzia (ripete l'ultimo spostamento); freccia ambra = gravità in arrivo.
+func _draw_drift() -> void:
+	if anim_t < 1.0: return
+	for s in state.ships:
+		if not Rules.alive(s) or s.landed != "" or s.get("dummy", false) or _concealed(s): continue
+		var col := UITheme.player_color(state, s.owner).lightened(0.2)
+		var r := Rules.simulate(_map, s.pos, s.vel, s.grav, Vector2i.ZERO, false, Rules.hazard_rocks(state, s), state.special, s.access_special)
+		var a := world(s.pos)
+		var inertial: Vector2i = s.pos + s.vel
+		var mid := world(inertial)
+		var g := Vector2i.ZERO
+		for v in s.grav: g += v
+		var dest := world(r.dest) if r.crash == "" else world(r.path[-1])
+		var bad: bool = r.crash != "" or r.offmap or r.special
+		var w := 1.5 / zoom
+		if s.vel != Vector2i.ZERO:
+			_dashed(a, mid, Color(col, 0.75), w, 0.22)
+		else:
+			draw_arc(a, 0.42, 0, TAU, 18, Color(col, 0.55), w)
+		if g != Vector2i.ZERO:
+			# ogni spinta di gravità in arrivo, in sequenza dall'estremo inerziale
+			var p := inertial
+			for v in s.grav:
+				var p2: Vector2i = p + v
+				var wa := world(p); var wb := world(p2)
+				draw_line(wa, wb, Color(UITheme.WARN, 0.9), 2.2 / zoom, true)
+				_arrow_head(wb, (wb - wa).normalized(), Color(UITheme.WARN, 0.9), 0.22)
+				p = p2
+			draw_circle(mid, 0.07, Color(col, 0.8))
+		elif s.vel != Vector2i.ZERO:
+			_arrow_head(mid, (mid - a).normalized(), Color(col, 0.75), 0.24)
+		if s.vel != Vector2i.ZERO or g != Vector2i.ZERO:
+			var ring := _hex_poly(dest, 0.5)
+			var closed := ring.duplicate(); closed.append(ring[0])
+			draw_polyline(closed, Color(UITheme.DANGER if bad else col, 0.7), w, true)
+		if bad:
+			draw_line(dest + Vector2(-0.25, -0.25), dest + Vector2(0.25, 0.25), UITheme.DANGER, 2.5 / zoom)
+			draw_line(dest + Vector2(-0.25, 0.25), dest + Vector2(0.25, -0.25), UITheme.DANGER, 2.5 / zoom)
 
 func _draw_histories() -> void:
 	var lw := 2.4 / zoom
