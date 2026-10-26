@@ -24,11 +24,17 @@ Aggiornato al 26 ottobre 2026.
 - Regole motore per carico, capienza, trasferimento di materiali e carburante fra navi sulla stessa rotta.
 - Rilevamento persistente da navi e basi, occultamento dopo l'atterraggio in una base amica e blocco del fuoco contro bersagli non rilevati.
 - Schermata di passaggio hot-seat al cambio giocatore e prima della scelta riservata del contrattacco.
+- Menu iniziale con catalogo degli otto scenari, scelta da 2 a 6 giocatori e nomi; solo Grand Tour è abilitato finché le regole specifiche degli altri scenari non sono complete.
+- Plancia pubblica ridisegnata in stile astronomico scuro, anteprima tratteggiata del movimento e rotta percorsa persistente per ogni nave.
+- Guida “Come si gioca” e suggerimento contestuale per ciascuna fase.
 - Salvataggio portabile JSON tramite appunti, con import e preservazione dei vettori esagonali.
 - Basi planetarie come entità dati e rifornimento solo dopo un atterraggio valido; fondazione del motore per basi orbitali/asteroidali e difese.
 - Selezione esplicita di direzione e accelerazione 1/2 per il lancio dei siluri.
 - Scheda e copertina originale per l'inclusione automatica nella Ludoteca Virtuale.
-- 29 test headless.
+- Replay navigabile per fotogrammi, con stato delle navi e ultimo evento.
+- Cataloghi dati separati e verificati per otto scenari, navi, equipaggiamento, costi e capacità dell'Updated Second Edition.
+- Grand Tour configurabile da 2 a 6 giocatori.
+- 35 test headless.
 
 ## Ancora incompleto
 

@@ -1,0 +1,9 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="600" height="760" viewBox="0 0 600 760">
+ <defs><radialGradient id="s"><stop stop-color="#183a5d"/><stop offset="1" stop-color="#050914"/></radialGradient><pattern id="h" width="52" height="45" patternUnits="userSpaceOnUse"><path d="M13 1h26l13 22-13 22H13L0 23z" fill="none" stroke="#75b9d1" stroke-opacity=".16"/></pattern></defs>
+ <rect width="600" height="760" rx="18" fill="url(#s)"/><rect width="600" height="760" rx="18" fill="url(#h)"/>
+ <g fill="none" stroke="#6ec8e7" stroke-opacity=".46" stroke-width="2"><ellipse cx="300" cy="408" rx="110" ry="58" transform="rotate(-22 300 408)"/><ellipse cx="300" cy="408" rx="196" ry="104" transform="rotate(-22 300 408)"/><ellipse cx="300" cy="408" rx="280" ry="151" transform="rotate(-22 300 408)"/></g>
+ <circle cx="300" cy="408" r="44" fill="#ffd46b"/><circle cx="466" cy="308" r="19" fill="#d65a42"/><circle cx="139" cy="492" r="24" fill="#4d8bd6"/>
+ <path d="M96 620l105-70 56 15 72-88 140-76" fill="none" stroke="#f8fbff" stroke-width="4" stroke-linecap="round" stroke-dasharray="8 10"/><path d="M446 376l41 25-46 15 12-15z" fill="#fff" transform="rotate(-18 462 400)"/>
+ <text x="300" y="102" text-anchor="middle" fill="#f3f8ff" font-family="sans-serif" font-size="56" font-weight="700" letter-spacing="3">TRIPLANETARY</text><text x="300" y="145" text-anchor="middle" fill="#8fd8ef" font-family="sans-serif" font-size="19" letter-spacing="3">EDIZIONE DIGITALE</text>
+ <text x="300" y="700" text-anchor="middle" fill="#d9e8f2" font-family="sans-serif" font-size="18">VETTORI · INERZIA · GRAVITÀ</text><text x="300" y="730" text-anchor="middle" fill="#89a9bc" font-family="sans-serif" font-size="13">VERSIONE GODOT · HOT-SEAT</text>
+</svg>

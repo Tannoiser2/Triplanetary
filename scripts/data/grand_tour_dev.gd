@@ -2,6 +2,8 @@ class_name GrandTourDev
 extends RefCounted
 
 const HexMathRef = preload("res://scripts/engine/hex.gd")
+const ReplayRulesRef = preload("res://scripts/engine/replay.gd")
+const ShipFactoryRef = preload("res://scripts/data/ship_factory.gd")
 
 # Coordinate odd-q calibrate sulla plancia A4 ruotata in senso orario.
 # La conversione ad assiali mantiene esatti vicinato, vettori e distanze.
@@ -31,7 +33,7 @@ const ASTEROID_OFFSETS := [
 ]
 const SPECIAL_ASTEROID_OFFSETS := [[37,25],[36,26],[37,26],[38,26],[36,27],[37,27],[38,27]]
 
-static func create_state() -> Dictionary:
+static func create_state(player_names: Array = ["Giocatore 1", "Giocatore 2"]) -> Dictionary:
 	var bodies := []
 	var gravity := []
 	for row: Array in BODY_OFFSET_DATA:
@@ -46,25 +48,32 @@ static func create_state() -> Dictionary:
 			bases.append({"id":"base-" + body.id,"name":"Base di " + body.name,"kind":"planetary","body_id":body.id,"owner":"shared","active":true,"defense":false})
 	var asteroids: Array = ASTEROID_OFFSETS.map(func(cell): return _offset_to_axial(cell[0], cell[1]))
 	var special_asteroids: Array = SPECIAL_ASTEROID_OFFSETS.map(func(cell): return _offset_to_axial(cell[0], cell[1]))
-	return {
+	var ships := []
+	var player_order := []
+	var knowledge := {}
+	for i in range(player_names.size()):
+		var owner := "P%d" % (i + 1); player_order.append(owner); knowledge[owner] = {}
+		var ship: Dictionary = _ship("p%d" % (i + 1), owner, terra, i % 6); ship.name = "Corvetta · " + str(player_names[i]); ships.append(ship)
+	for observer in player_order:
+		for ship: Dictionary in ships:
+			if ship.owner != observer: knowledge[observer][ship.id] = true
+	var state := {
 		"scenario": "grand-tour-2037", "ruleset": "updated-second-edition", "seed": 2037,
-		"rng_state": 2037, "turn": 1, "segment": "P1", "phase": "astrogation", "commands": {},
-		"pending_combat": {}, "ordnance": [], "asteroids": asteroids, "special_asteroids": special_asteroids, "next_entity_id": 1,
-		"knowledge": {"P1":{"p2":true},"P2":{"p1":true}},
+		"rng_state": 2037, "turn": 1, "segment": "P1", "player_order": player_order, "player_names": player_names.duplicate(), "phase": "astrogation", "commands": {},
+		"pending_combat": {}, "ordnance": [], "asteroids": asteroids, "special_asteroids": special_asteroids, "next_entity_id": 1, "replay_frames": [],
+		"knowledge": knowledge,
 		"log": [], "events": [], "winner": "",
 		"map_columns": 56, "map_rows": 35,
 		"bodies": bodies, "bases": bases, "gravity": gravity,
-		"ships": [_ship("p1", "P1", terra, 0), _ship("p2", "P2", terra, 1)]
+		"ships": ships
 	}
+	ReplayRulesRef.record(state, "Inizio partita")
+	return state
 
 static func _ship(id: String, owner: String, position: Vector2i, base_side: int) -> Dictionary:
-	return {"id": id, "owner": owner, "name": "Corvetta " + owner, "position": position,
-		"velocity": Vector2i.ZERO, "fuel": 20, "fuel_spent": 0, "max_fuel": 20,
-		"combat": 2, "commercial": false, "pending_gravity": [], "disabled_until_turn": 0,
-		"destroyed": false, "overload_available": true, "visited_bodies": ["terra"],
-		"landed_at": "terra", "base_side": base_side, "must_burn_after_takeoff": false,
-		"heroic": false, "last_attack_key": "", "last_target_key": "", "previous_position": position,
-		"type":"corvette", "cargo_capacity": 5, "inventory": {"mine":0,"torpedo":0,"nuke":0}, "launched_key":"", "must_change_after_launch":false}
+	var ship: Dictionary = ShipFactoryRef.create(id, owner, "corvette", position)
+	ship.visited_bodies = ["terra"]; ship.landed_at = "terra"; ship.base_side = base_side; ship.trail = [position]
+	return ship
 
 static func _offset_to_axial(column: int, row: int) -> Vector2i:
 	return Vector2i(column, row - (column - (column & 1)) / 2)

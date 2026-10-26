@@ -1,9 +1,11 @@
 .godot/
 build/
 exports/
-assets/local-reference/map-source.jpg
+assets/local-reference/*
+!assets/local-reference/.gitkeep
 assets/local-reference/*.import
 docs/*.import
 *.tmp
 *.log
+work/
 

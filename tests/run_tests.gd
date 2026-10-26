@@ -8,6 +8,8 @@ const PersistenceRef = preload("res://scripts/engine/persistence.gd")
 const OrdnanceRulesRef = preload("res://scripts/engine/ordnance.gd")
 const LogisticsRulesRef = preload("res://scripts/engine/logistics.gd")
 const BaseRulesRef = preload("res://scripts/engine/bases.gd")
+const ReplayRulesRef = preload("res://scripts/engine/replay.gd")
+const ShipFactoryRef = preload("res://scripts/data/ship_factory.gd")
 
 var failures := 0
 
@@ -85,7 +87,20 @@ func _init() -> void:
 	_check(BaseRulesRef.resupply(base_state, base_state.ships[0], earth_base) and base_state.ships[0].fuel == 20, "rifornimento su base planetaria condivisa")
 	var orbiting: Dictionary = base_state.ships[0].duplicate(true); orbiting.landed_at = ""; orbiting.position += Vector2i(1,0)
 	_check(not BaseRulesRef.can_use(orbiting, earth_base), "base planetaria richiede atterraggio")
-	if failures == 0: print("OK: 29 test")
+	var replay_state: Dictionary = GrandTourDevRef.create_state(); replay_state.log.append("evento prova"); ReplayRulesRef.record(replay_state, "Prova")
+	_check(replay_state.replay_frames.size() == 2 and "evento prova" in ReplayRulesRef.describe(replay_state.replay_frames[1]), "replay registra fotogrammi navigabili")
+	var scenario_data: Variant = JSON.parse_string(FileAccess.get_file_as_string("res://data/scenarios.json"))
+	var ruleset_data: Variant = JSON.parse_string(FileAccess.get_file_as_string("res://data/ruleset_updated_second.json"))
+	_check(scenario_data is Array and scenario_data.size() == 8, "catalogo dati contiene gli otto scenari")
+	_check(ruleset_data.ships.dreadnought.combat == 15 and ruleset_data.equipment.nuke.cost_mcr == 300, "tabella navi ed equipaggiamento trascritta")
+	var torch: Dictionary = ShipFactoryRef.create("torch-1", "P1", "torch", Vector2i.ZERO)
+	_check(torch.infinite_fuel and GameRulesRef.can_overload(torch), "Torch con carburante infinito dal catalogo")
+	var multi: Dictionary = GrandTourDevRef.create_state(["Ada", "Bruno", "Carla"]); multi.phase = "resupply"; multi = GameRulesRef.advance_phase(multi)
+	_check(multi.ships.size() == 3 and multi.segment == "P2" and multi.ships[2].name.ends_with("Carla"), "Grand Tour multigiocatore e ordine segmenti")
+	var trail_ship: Dictionary = ShipFactoryRef.create("trail", "P1", "corvette", Vector2i.ZERO); trail_ship.trail = [Vector2i.ZERO]; trail_ship.velocity = Vector2i(1,0)
+	trail_ship = GameRulesRef.move_ship(trail_ship, {}, [], 1)
+	_check(trail_ship.trail == [Vector2i.ZERO, Vector2i(1,0)], "rotta percorsa conservata per il tracciamento")
+	if failures == 0: print("OK: 35 test")
 	quit(failures)
 
 func _check(value: bool, label: String) -> void:

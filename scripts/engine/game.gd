@@ -21,8 +21,8 @@ static func move_ship(ship: Dictionary, command: Dictionary, gravity_fields: Arr
 		if step not in HexMathRef.DIRECTIONS: push_error("Direzione di spinta non valida"); return next
 		thrust += step
 	var cost := thrust_steps.size()
-	if cost > next.fuel: push_error("Carburante esaurito"); return next
-	next.fuel -= cost
+	if not next.get("infinite_fuel", false) and cost > next.fuel: push_error("Carburante esaurito"); return next
+	if not next.get("infinite_fuel", false): next.fuel -= cost
 	next.fuel_spent = next.get("fuel_spent", 0) + cost
 	if cost == 2: next.overload_available = false
 	if next.get("must_burn_after_takeoff", false) and cost == 0:
@@ -37,6 +37,8 @@ static func move_ship(ship: Dictionary, command: Dictionary, gravity_fields: Arr
 	var destination: Vector2i = next.position + next.velocity
 	var path := HexMathRef.supercover_line(next.position, destination)
 	next.position = destination
+	if not next.has("trail"): next.trail = [next.previous_position]
+	next.trail.append(destination)
 	next.pending_gravity = []
 	var weak_count_by_body := {}
 	for hex: Vector2i in path.slice(1):
@@ -87,8 +89,10 @@ static func advance_phase(state: Dictionary) -> Dictionary:
 	else:
 		next.phase = PHASES[0]
 		next.commands = {}
-		if next.segment == "P1": next.segment = "P2"
-		else: next.segment = "P1"; next.turn += 1
+		var order: Array = next.get("player_order", ["P1", "P2"])
+		var player_index := order.find(next.segment)
+		if player_index < order.size() - 1: next.segment = order[player_index + 1]
+		else: next.segment = order[0]; next.turn += 1
 	return next
 
 static func declare_attack(state: Dictionary, attacker_id: String, target_id: String) -> Dictionary:
@@ -158,7 +162,7 @@ static func _ship_by_id(ships: Array, id: String) -> Dictionary:
 	return {}
 
 static func can_overload(ship: Dictionary) -> bool:
-	return not ship.get("commercial", false) and ship.get("overload_available", false) and ship.fuel >= 2 and not ship.destroyed and ship.get("landed_at", "") == ""
+	return not ship.get("commercial", false) and ship.get("overload_available", false) and (ship.get("infinite_fuel", false) or ship.fuel >= 2) and not ship.destroyed and ship.get("landed_at", "") == ""
 
 static func can_land(ship: Dictionary, body: Dictionary) -> bool:
 	return ship.get("landed_at", "") == "" and ship.fuel >= 1 and HexMathRef.distance(ship.position, body.hex) == 1 and HexMathRef.distance(Vector2i.ZERO, ship.velocity) == 1 and body.base
