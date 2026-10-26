@@ -49,6 +49,12 @@ static func update_detection(state: Dictionary) -> void:
 		if body.get("owner", "") == ship.owner:
 			for viewer in state.knowledge:
 				if viewer != ship.owner: state.knowledge[viewer].erase(ship.id)
+	if state.get("scenario", "") == "lateral-7" and not state.get("lateral7", {}).get("dreadnought_unlocked", false):
+		for ship: Dictionary in state.ships:
+			if ship.owner == "P1" and state.knowledge.get("P2", {}).get(ship.id, false):
+				state.lateral7.dreadnought_unlocked = true
+				state.log.append("Un pirata è stato rilevato: il Tycho Brahe può muovere")
+				break
 
 static func is_detected(state: Dictionary, viewer: String, ship_id: String) -> bool:
 	var ship := _ship_by_id(state.ships, ship_id)

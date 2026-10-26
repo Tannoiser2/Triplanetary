@@ -24,8 +24,10 @@ Aggiornato al 26 ottobre 2026.
 - Regole motore per carico, capienza, trasferimento di materiali e carburante fra navi sulla stessa rotta.
 - Rilevamento persistente da navi e basi, occultamento dopo l'atterraggio in una base amica e blocco del fuoco contro bersagli non rilevati.
 - Schermata di passaggio hot-seat al cambio giocatore e prima della scelta riservata del contrattacco.
-- Menu iniziale blu-verde/rosso con catalogo descrittivo degli otto scenari e sei posti configurabili per nome e tipo (umano, IA o nessuno); Grand Tour ed Escape sono abilitati in hot-seat umano.
+- Menu iniziale blu-verde/rosso con catalogo descrittivo degli otto scenari e sei posti configurabili per nome e tipo (umano, IA o nessuno); Grand Tour, Escape e Lateral 7 sono abilitati in hot-seat umano.
 - Escape include setup canonico, identità segreta dei fuggitivi, bersaglio selezionabile, ispezione/cattura, speronamento, fuga oltre Giove e livelli di vittoria.
+- Lateral 7 include collocazione manuale nella Fascia, segnalini coperti, rimozione scelta dei dummy, sblocco del dreadnought tramite rilevamento, dotazioni, passeggeri, Clandestine e vittoria dedicata.
+- Le difese planetarie attive risolvono automaticamente il fuoco 2:1 senza modificatori.
 - Plancia pubblica ridisegnata in stile astronomico scuro, anteprima tratteggiata del movimento e rotta percorsa persistente per ogni nave.
 - Plancia navigabile con zoom alla posizione del puntatore e trascinamento; legenda sempre visibile.
 - Vettore inerziale azzurro tratteggiato, spinta gialla più fine con marcatore esagonale e rotta effettiva continua, spessa e incurvata tra gli esagoni.
@@ -38,7 +40,7 @@ Aggiornato al 26 ottobre 2026.
 - Replay navigabile per fotogrammi, con stato delle navi e ultimo evento.
 - Cataloghi dati separati e verificati per otto scenari, navi, equipaggiamento, costi e capacità dell'Updated Second Edition.
 - Grand Tour configurabile da 2 a 6 giocatori.
-- 41 test headless.
+- 52 test headless.
 
 ## Ancora incompleto
 
@@ -46,9 +48,8 @@ Aggiornato al 26 ottobre 2026.
 - Collisione sub-esagono con il disco grafico anziché con l'intero esagono centrale.
 - Attacchi combinati con più navi, ramming e selezione multipla dei bersagli.
 - Interfaccia completa per carico e trasferimenti (le regole di motore sono presenti).
-- Basi orbitali/asteroidali, difese, resa e cattura.
-- Dummy e identità segrete (rilevamento, occultamento e schermata privacy hot-seat sono presenti).
-- Replay navigabile ed export/import portabile del salvataggio.
-- Gli altri sette scenari.
+- Basi orbitali, resa e cattura generale fuori dalle regole specifiche di Escape.
+- Dummy e identità segrete al di fuori di Lateral 7/Escape.
+- Gli altri cinque scenari.
 
 La build pubblica non include la scansione della plancia. La modalità locale può caricarla da `assets/local-reference/map-source.jpg`.

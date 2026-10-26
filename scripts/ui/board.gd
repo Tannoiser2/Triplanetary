@@ -1,6 +1,8 @@
 class_name TriplanetaryBoard
 extends Control
 
+signal hex_clicked(hex: Vector2i)
+
 var state: Dictionary
 var selected_ship := "p1"
 const MAP_SIZE := Vector2(2048, 1447)
@@ -13,6 +15,8 @@ var camera_zoom := 1.0
 var camera_offset := Vector2.ZERO
 var dragging := false
 var drag_last := Vector2.ZERO
+var drag_origin := Vector2.ZERO
+var drag_distance := 0.0
 
 func _ready() -> void:
 	clip_contents = true
@@ -26,15 +30,30 @@ func _gui_input(event: InputEvent) -> void:
 			_zoom_at(event.position, 1.18 if event.button_index == MOUSE_BUTTON_WHEEL_UP else 1.0 / 1.18)
 			accept_event()
 		elif event.button_index in [MOUSE_BUTTON_LEFT, MOUSE_BUTTON_MIDDLE]:
-			dragging = event.pressed
-			drag_last = event.position
+			if event.pressed:
+				dragging = true; drag_last = event.position; drag_origin = event.position; drag_distance = 0.0
+			else:
+				if dragging and event.button_index == MOUSE_BUTTON_LEFT and drag_distance < 5.0: hex_clicked.emit(_nearest_hex(event.position))
+				dragging = false
 			accept_event()
 	elif event is InputEventMouseMotion and dragging:
+		drag_distance += event.position.distance_to(drag_last)
 		camera_offset += event.position - drag_last
 		drag_last = event.position
 		_clamp_camera()
 		queue_redraw()
 		accept_event()
+
+func _nearest_hex(screen_position: Vector2) -> Vector2i:
+	var map_position := (screen_position - _view_origin()) / _effective_scale()
+	var best := Vector2i.ZERO
+	var best_distance := INF
+	for column in range(56):
+		for row in range(35):
+			var candidate := _offset_to_axial(column, row)
+			var distance := axial_to_pixel(candidate).distance_squared_to(map_position)
+			if distance < best_distance: best_distance = distance; best = candidate
+	return best
 
 func _zoom_at(mouse_position: Vector2, factor: float) -> void:
 	var old_scale := _effective_scale()
@@ -94,9 +113,13 @@ func _draw() -> void:
 		draw_string(ThemeDB.fallback_font, p + Vector2(13, -11), body.name, HORIZONTAL_ALIGNMENT_LEFT, -1, 13, Color("d8e7f4"))
 	for ship: Dictionary in state.ships:
 		if ship.get("escaped", false) or ship.get("captured", false): continue
-		if ship.owner != state.segment and not state.get("knowledge", {}).get(state.segment, {}).get(ship.id, false): continue
+		var known: bool = ship.owner == state.segment or state.get("knowledge", {}).get(state.segment, {}).get(ship.id, false)
+		if ship.owner != state.segment and not known and not ship.get("concealed", false): continue
 		var p := axial_to_pixel(ship.position) + Vector2(-5 if ship.owner == "P1" else 5, 0)
 		var color: Color = PLAYER_COLORS[clampi(int(ship.owner.trim_prefix("P")) - 1, 0, PLAYER_COLORS.size() - 1)]
+		if ship.get("concealed", false) and not known:
+			_draw_marker_hex(p, 8.0, Color("c7d2dc"), 2.0)
+			continue
 		var trail: Array = ship.get("trail", [])
 		if trail.size() > 1:
 			for i in range(1, trail.size()):
@@ -123,6 +146,12 @@ func _draw() -> void:
 		var label := "M" if item.kind == "mine" else ("T" if item.kind == "torpedo" else "N")
 		draw_circle(p, 6, Color("d74848") if item.kind == "nuke" else Color("2d2d2d"))
 		draw_string(ThemeDB.fallback_font, p + Vector2(8, 4), label, HORIZONTAL_ALIGNMENT_LEFT, -1, 12, Color("2d2d2d"))
+	for dummy: Dictionary in state.get("dummies", []):
+		if not dummy.get("active", true): continue
+		var p := axial_to_pixel(dummy.position)
+		var color := (Color("ff6f76") if dummy.owner == "P1" else Color("dceaf3")) if dummy.owner == state.segment else Color("c7d2dc")
+		draw_circle(p, 7, Color("071326"))
+		draw_arc(p, 7, 0, TAU, 6, color, 2.0)
 	draw_set_transform(Vector2.ZERO, 0.0, Vector2.ONE)
 	draw_rect(Rect2(12, 12, 330, 54), Color("07111fd9"), true)
 	draw_string(ThemeDB.fallback_font, Vector2(24, 34), "Rotella: zoom   Trascina: scorri", HORIZONTAL_ALIGNMENT_LEFT, -1, 15, Color("d8e7f4"))

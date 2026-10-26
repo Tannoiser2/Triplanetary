@@ -6,7 +6,7 @@
 |---|---:|---|---|
 | Grand Tour (2037) | multi | non indicata | primo MVP; regole complete, coordinate da verificare |
 | Escape | 2 | breve | giocabile e coperto da test deterministici |
-| Lateral 7 | 2 | breve | trascritto in specifica |
+| Lateral 7 | 2 | breve | giocabile e coperto da test deterministici |
 | Nova | 3 | breve | trascritto in specifica |
 | Retribution | 2 | breve | trascritto in specifica |
 | The Fleet Mutiny | 2 | breve | trascritto in specifica |
@@ -40,7 +40,7 @@ Pilgrims: 3 trasporti su Terra, uno segreto con fuggitivi. Enforcers: corvetta i
 
 ### Lateral 7
 
-Pirates: 2 corsair, 1 corvette, 9 dummy; Navy: dreadnought, 3 dummy, liner. Posizionamento Belt, velocità zero; liner su Venere. Clandestine pirata e special asteroids accessibili; corsair con una mina. Navy basi Marte/Terra/Callisto; dreadnought con mina+siluro e immobile fino a rilevamento pirata. Vittoria tramite passeggeri a Clandestine o liner a Ganimede.
+Pirates: 2 corsair, 1 corvette, 9 dummy; Navy: dreadnought, 3 dummy, liner. Posizionamento libero nella Fascia, velocità zero; liner su Venere. Clandestine pirata e special asteroids accessibili; corsair con una mina. Navy basi Marte/Terra/Callisto; dreadnought con mina+siluro e immobile fino a rilevamento pirata. La prima accelerazione rimuove tre dummy scelti. Vittoria tramite passeggeri fermi a Clandestine o liner che attraversa il campo di gravità piena di Ganimede; questa seconda condizione normalizza il testo non geometrico “makes it to Ganymede”.
 
 ### Nova
 

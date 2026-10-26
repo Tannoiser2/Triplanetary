@@ -25,6 +25,7 @@ static func move_ship(ship: Dictionary, command: Dictionary, gravity_fields: Arr
 	if not next.get("infinite_fuel", false): next.fuel -= cost
 	next.fuel_spent = next.get("fuel_spent", 0) + cost
 	if cost == 2: next.overload_available = false
+	if cost > 0: next.first_acceleration_pending = false
 	if next.get("must_burn_after_takeoff", false) and cost == 0:
 		next.destroyed = true
 		next.destroyed_reason = "Ricaduta dopo il decollo"
@@ -63,12 +64,14 @@ static func advance_phase(state: Dictionary) -> Dictionary:
 		for i in range(next.ships.size()):
 			if next.ships[i].owner == next.segment:
 				var command: Dictionary = next.commands.get(next.ships[i].id, {})
+				if next.ships[i].get("movement_locked", false) and not next.get("lateral7", {}).get("dreadnought_unlocked", false): command = {}
 				var from_position: Vector2i = next.ships[i].position
 				if command.get("takeoff", false): _takeoff(next.ships[i], next.bodies)
 				elif command.has("land_body_id"): _land(next.ships[i], command.land_body_id, next.bodies)
 				else: next.ships[i] = move_ship(next.ships[i], command, next.gravity, next.turn)
 				_apply_map_and_body_collisions(next.ships[i], next.bodies, next, from_position)
 				_resolve_ram(next, next.ships[i], command, from_position)
+				_apply_planetary_defenses(next, next.ships[i])
 				OrdnanceRulesRef.resolve_asteroid_hazards(next, next.ships[i], HexMathRef.supercover_line(from_position, next.ships[i].position))
 				if next.ships[i].get("must_change_after_launch", false):
 					var launcher_items: Array = next.ordnance.filter(func(item): return item.launcher_id == next.ships[i].id and item.age == 0)
@@ -212,6 +215,7 @@ static func _body_by_id(bodies: Array, id: String) -> Dictionary:
 static func _check_scenario_victory(state: Dictionary) -> void:
 	if state.get("scenario", "") == "grand-tour-2037": _check_grand_tour_victory(state)
 	elif state.get("scenario", "") == "escape": _check_escape_victory(state)
+	elif state.get("scenario", "") == "lateral-7": _check_lateral7_victory(state)
 
 static func _check_grand_tour_victory(state: Dictionary) -> void:
 	var required: Array = []
@@ -249,6 +253,23 @@ static func _check_escape_victory(state: Dictionary) -> void:
 		state.victory_level = "morale" if enforcer_destroyed else "marginale"
 	if state.winner != "": state.log.append("Escape: vittoria %s di %s" % [state.victory_level, state.winner])
 
+static func _check_lateral7_victory(state: Dictionary) -> void:
+	if state.winner != "" or not state.get("lateral7", {}).get("setup_complete", false): return
+	var holder := _ship_by_id(state.ships, state.lateral7.passenger_holder)
+	if holder.is_empty() or holder.destroyed:
+		state.winner = "NESSUNO"; state.victory_level = "sconfitta reciproca"
+	elif holder.owner == "P1":
+		var clandestine := _body_by_id(state.bodies, "clandestine")
+		if holder.position == clandestine.hex and holder.velocity == Vector2i.ZERO:
+			state.winner = "P1"
+			state.victory_level = "decisiva" if state.ships.any(func(ship): return ship.type == "dreadnought" and ship.destroyed) else "normale"
+	else:
+		var liner := _ship_by_id(state.ships, "navy-liner")
+		if not liner.is_empty() and "ganymede" in liner.visited_bodies:
+			state.winner = "P2"
+			state.victory_level = "decisiva" if state.ships.any(func(ship): return ship.owner == "P1" and ship.destroyed) else "normale"
+	if state.winner != "": state.log.append("Lateral 7: %s, esito %s" % [state.winner, state.victory_level])
+
 static func inspect_or_capture(state: Dictionary, inspector_id: String, target_id: String) -> Dictionary:
 	var next := state.duplicate(true)
 	if next.get("scenario", "") != "escape" or next.phase != "resupply": return next
@@ -280,3 +301,14 @@ static func _resolve_ram(state: Dictionary, attacker: Dictionary, command: Dicti
 	_apply_damage(target, result, state.turn)
 	state.log.append("Speronamento di %s contro %s: tiro %d [%s]" % [attacker.name, target.name, die, result])
 	state.events.append({"turn":state.turn, "segment":state.segment, "phase":"movement", "kind":"ram", "attacker":attacker.id, "target":target.id, "die":die, "result":result})
+
+static func _apply_planetary_defenses(state: Dictionary, ship: Dictionary) -> void:
+	if ship.destroyed or ship.get("landed_at", "") != "": return
+	for base: Dictionary in state.get("bases", []):
+		if base.get("kind", "") != "planetary" or not base.get("defense", false) or base.get("owner", "") in ["", "neutral", "shared", ship.owner]: continue
+		var body := _body_by_id(state.bodies, base.get("body_id", ""))
+		if body.is_empty() or HexMathRef.distance(ship.position, body.hex) != 1: continue
+		var result := BaseRulesRef.defense_result(state, base, ship)
+		_apply_damage(ship, result, state.turn)
+		state.log.append("Difesa di %s contro %s [%s]" % [base.name, ship.name, result])
+		state.events.append({"turn":state.turn, "segment":state.segment, "phase":"movement", "kind":"planetary_defense", "base":base.id, "target":ship.id, "result":result})

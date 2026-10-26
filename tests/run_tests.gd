@@ -5,6 +5,7 @@ const GameRulesRef = preload("res://scripts/engine/game.gd")
 const CombatRulesRef = preload("res://scripts/engine/combat.gd")
 const GrandTourDevRef = preload("res://scripts/data/grand_tour_dev.gd")
 const EscapeScenarioRef = preload("res://scripts/data/escape.gd")
+const Lateral7ScenarioRef = preload("res://scripts/data/lateral7.gd")
 const PersistenceRef = preload("res://scripts/engine/persistence.gd")
 const OrdnanceRulesRef = preload("res://scripts/engine/ordnance.gd")
 const LogisticsRulesRef = preload("res://scripts/engine/logistics.gd")
@@ -121,7 +122,39 @@ func _init() -> void:
 	ram_state = GameRulesRef.advance_phase(ram_state)
 	var ram_events: Array = ram_state.events.filter(func(event): return event.get("kind", "") == "ram")
 	_check(ram_events.size() == 1 and ram_state.ships[0].disabled_until_turn == 3 and ram_state.ships[3].disabled_until_turn == 3, "Escape risolve lo speronamento sulla colonna Ram per entrambe le navi")
-	if failures == 0: print("OK: 41 test")
+	var lateral: Dictionary = Lateral7ScenarioRef.create_state(["Pirati", "Marina"])
+	_check(lateral.phase == "setup" and lateral.segment == "P2" and lateral.ships.size() == 1 and lateral.ships[0].has_passengers, "Lateral 7 apre il setup della Marina con il liner su Venere")
+	var setup_hexes: Array = lateral.asteroids.slice(0, 16)
+	for setup_hex: Vector2i in setup_hexes: lateral = Lateral7ScenarioRef.place_next(lateral, setup_hex)
+	_check(lateral.phase == "astrogation" and lateral.segment == "P1" and lateral.ships.size() == 5 and lateral.dummies.size() == 12, "Lateral 7 colloca flotte e falsi bersagli in esagoni asteroidali distinti")
+	var dreadnought: Dictionary = lateral.ships.filter(func(item): return item.type == "dreadnought")[0]
+	var pirate_corsairs: Array = lateral.ships.filter(func(item): return item.owner == "P1" and item.type == "corsair")
+	_check(dreadnought.movement_locked and dreadnought.inventory.mine == 1 and dreadnought.inventory.torpedo == 1 and pirate_corsairs.all(func(item): return item.inventory.mine == 1 and item.special_asteroid_access), "Lateral 7 applica carichi, blocco dreadnought e accesso pirata agli asteroidi speciali")
+	var passenger_target: Dictionary = pirate_corsairs[0]; lateral.phase = "resupply"; passenger_target.position = lateral.ships[0].position; passenger_target.velocity = lateral.ships[0].velocity
+	lateral = Lateral7ScenarioRef.transfer_passengers(lateral, "navy-liner", passenger_target.id)
+	_check(lateral.lateral7.passenger_holder == passenger_target.id and lateral.ships[0].has_passengers == false, "Lateral 7 trasferisce i passeggeri solo a rotta coincidente")
+	var dummy_state: Dictionary = Lateral7ScenarioRef.create_state()
+	for setup_hex: Vector2i in dummy_state.asteroids.slice(0, 16): dummy_state = Lateral7ScenarioRef.place_next(dummy_state, setup_hex)
+	var first_pirate: Dictionary = dummy_state.ships.filter(func(item): return item.owner == "P1")[0]
+	_check(Lateral7ScenarioRef.begin_dummy_removal(dummy_state, first_pirate.id, [Vector2i(1, 0)]), "Lateral 7 richiede la rimozione di tre dummy alla prima accelerazione pirata")
+	var pirate_dummy_hexes: Array = dummy_state.dummies.filter(func(item): return item.owner == "P1").slice(0, 3).map(func(item): return item.position)
+	for dummy_hex: Vector2i in pirate_dummy_hexes: Lateral7ScenarioRef.remove_dummy_at(dummy_state, dummy_hex)
+	_check(dummy_state.dummies.filter(func(item): return item.owner == "P1" and item.active).size() == 6 and dummy_state.commands[first_pirate.id].thrust_steps == [Vector2i(1, 0)], "Lateral 7 applica la spinta solo dopo tre rimozioni scelte")
+	var locked_dreadnought: Dictionary = dummy_state.ships.filter(func(item): return item.type == "dreadnought")[0]
+	_check(not Lateral7ScenarioRef.begin_dummy_removal(dummy_state, locked_dreadnought.id, [Vector2i(1, 0)]), "Tycho Brahe resta immobile prima del rilevamento")
+	first_pirate.position = locked_dreadnought.position; LogisticsRulesRef.update_detection(dummy_state)
+	_check(dummy_state.lateral7.dreadnought_unlocked and Lateral7ScenarioRef.begin_dummy_removal(dummy_state, locked_dreadnought.id, [Vector2i(1, 0)]), "rilevamento pirata sblocca il dreadnought")
+	var pirate_win: Dictionary = lateral.duplicate(true); var passenger_ship: Dictionary = pirate_win.ships.filter(func(item): return item.id == pirate_win.lateral7.passenger_holder)[0]; var clandestine_body: Dictionary = pirate_win.bodies.filter(func(item): return item.id == "clandestine")[0]
+	passenger_ship.position = clandestine_body.hex; passenger_ship.velocity = Vector2i.ZERO; pirate_win.phase = "resupply"; pirate_win = GameRulesRef.advance_phase(pirate_win)
+	_check(pirate_win.winner == "P1", "Lateral 7 assegna la vittoria pirata portando i passeggeri a Clandestine")
+	var defense_state: Dictionary = dummy_state.duplicate(true); var defended_pirate: Dictionary = defense_state.ships.filter(func(item): return item.owner == "P1")[0]; var terra_body: Dictionary = defense_state.bodies.filter(func(item): return item.id == "terra")[0]
+	defense_state.phase = "movement"; defense_state.segment = "P1"; defense_state.turn = 1; defense_state.rng_state = 2; defense_state.commands = {}; defended_pirate.position = terra_body.hex + Vector2i(1, 0); defended_pirate.previous_position = defended_pirate.position; defended_pirate.velocity = Vector2i.ZERO
+	defense_state = GameRulesRef.advance_phase(defense_state)
+	_check(defense_state.events.any(func(event): return event.get("kind", "") == "planetary_defense") and defense_state.ships.filter(func(item): return item.id == defended_pirate.id)[0].disabled_until_turn == 6, "difesa planetaria spara automaticamente a 2:1 senza modificatori")
+	var mine_state: Dictionary = dummy_state.duplicate(true); var mine_ship: Dictionary = mine_state.ships.filter(func(item): return item.owner == "P1" and item.type == "corsair")[0]; var mine_clandestine: Dictionary = mine_state.bodies.filter(func(item): return item.id == "clandestine")[0]
+	mine_state.phase = "resupply"; mine_ship.position = mine_clandestine.hex; mine_ship.velocity = Vector2i.ZERO; mine_ship.inventory.mine = 0; mine_state = Lateral7ScenarioRef.load_mine(mine_state, mine_ship.id)
+	_check(mine_state.ships.filter(func(item): return item.id == mine_ship.id)[0].inventory.mine == 1, "Lateral 7 rende disponibili le mine ai Pirati a Clandestine entro la stiva")
+	if failures == 0: print("OK: 52 test")
 	quit(failures)
 
 func _check(value: bool, label: String) -> void:

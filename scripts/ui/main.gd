@@ -4,6 +4,7 @@ const HexMathRef = preload("res://scripts/engine/hex.gd")
 const GameRulesRef = preload("res://scripts/engine/game.gd")
 const GrandTourDevRef = preload("res://scripts/data/grand_tour_dev.gd")
 const EscapeScenarioRef = preload("res://scripts/data/escape.gd")
+const Lateral7ScenarioRef = preload("res://scripts/data/lateral7.gd")
 const BoardRef = preload("res://scripts/ui/board.gd")
 const PersistenceRef = preload("res://scripts/engine/persistence.gd")
 const OrdnanceRulesRef = preload("res://scripts/engine/ordnance.gd")
@@ -22,6 +23,8 @@ var inspect_button: Button
 var ram_button: Button
 var target_picker: OptionButton
 var selected_target_id := ""
+var passenger_button: Button
+var load_mine_button: Button
 var counter_yes_button: Button
 var counter_no_button: Button
 var advance_button: Button
@@ -75,7 +78,7 @@ func _build_ui() -> void:
 	var replay := Button.new(); replay.text = "Replay"; replay.pressed.connect(_open_replay); header.add_child(replay)
 	var help := Button.new(); help.text = "Come si gioca"; help.pressed.connect(_open_help); header.add_child(help)
 	var split := HSplitContainer.new(); split.size_flags_vertical = Control.SIZE_EXPAND_FILL; root.add_child(split)
-	board = BoardRef.new(); board.custom_minimum_size = Vector2(760, 600); board.size_flags_horizontal = Control.SIZE_EXPAND_FILL; board.size_flags_vertical = Control.SIZE_EXPAND_FILL; split.add_child(board)
+	board = BoardRef.new(); board.custom_minimum_size = Vector2(760, 600); board.size_flags_horizontal = Control.SIZE_EXPAND_FILL; board.size_flags_vertical = Control.SIZE_EXPAND_FILL; board.hex_clicked.connect(_on_board_hex_clicked); split.add_child(board)
 	var panel := VBoxContainer.new(); panel.custom_minimum_size.x = 390; panel.add_theme_constant_override("separation", 8); split.add_child(panel)
 	var controls_scroll := ScrollContainer.new(); controls_scroll.size_flags_vertical = Control.SIZE_EXPAND_FILL; controls_scroll.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED; panel.add_child(controls_scroll)
 	var controls_column := VBoxContainer.new(); controls_column.size_flags_horizontal = Control.SIZE_EXPAND_FILL; controls_column.add_theme_constant_override("separation", 8); controls_scroll.add_child(controls_column)
@@ -109,6 +112,8 @@ func _build_ui() -> void:
 	attack_button = Button.new(); attack_button.text = "ATTACCA NAVE NEMICA"; attack_button.pressed.connect(_attack); actions_grid.add_child(attack_button)
 	ram_button = Button.new(); ram_button.text = "PIANIFICA SPERONAMENTO"; ram_button.pressed.connect(_plan_ram); actions_grid.add_child(ram_button)
 	inspect_button = Button.new(); inspect_button.text = "ISPEZIONA / CATTURA"; inspect_button.pressed.connect(_inspect_or_capture); actions_grid.add_child(inspect_button)
+	passenger_button = Button.new(); passenger_button.text = "TRASFERISCI PASSEGGERI"; passenger_button.pressed.connect(_transfer_passengers); actions_grid.add_child(passenger_button)
+	load_mine_button = Button.new(); load_mine_button.text = "CARICA MINA"; load_mine_button.pressed.connect(_load_lateral_mine); actions_grid.add_child(load_mine_button)
 	counter_yes_button = Button.new(); counter_yes_button.text = "CONTRATTACCA"; counter_yes_button.pressed.connect(_counter.bind(true)); actions_grid.add_child(counter_yes_button)
 	counter_no_button = Button.new(); counter_no_button.text = "RINUNCIA AL CONTRATTACCO"; counter_no_button.pressed.connect(_counter.bind(false)); actions_grid.add_child(counter_no_button)
 	advance_button = Button.new(); advance_button.text = "AVANZA FASE"; advance_button.custom_minimum_size.y = 36; advance_button.pressed.connect(_advance); actions_grid.add_child(advance_button)
@@ -184,7 +189,7 @@ func _refresh_menu_availability() -> void:
 		if field.selected != 2: active_players += 1
 		if field.selected == 1: has_ai = true
 	var required_players := 2 if selected_scenario == 1 else 2
-	var scenario_available := selected_scenario in [0, 1]
+	var scenario_available := selected_scenario in [0, 1, 2]
 	var count_valid := active_players >= required_players if selected_scenario == 0 else active_players == required_players
 	var playable := scenario_available and count_valid and not has_ai
 	start_button.disabled = not playable
@@ -196,6 +201,8 @@ func _refresh_menu_availability() -> void:
 		menu_note.text = "Grand Tour richiede almeno due giocatori; Escape ne richiede esattamente due."
 	elif selected_scenario == 1:
 		menu_note.text = "Escape: Pellegrini contro Enforcers, identità segreta e fuga oltre Giove."
+	elif selected_scenario == 2:
+		menu_note.text = "Lateral 7: collocazione libera nella Fascia, falsi bersagli e cattura del liner."
 	else:
 		menu_note.text = "Grand Tour disponibile per %d giocatori in modalità hot-seat." % active_players
 
@@ -207,12 +214,16 @@ func _start_from_menu() -> void:
 		var candidate := player_name_fields[i].text.strip_edges()
 		normalized.append(candidate if candidate != "" else "Giocatore %d" % (i + 1))
 		player_types.append("human" if player_type_fields[i].selected == 0 else "ai")
-	state = EscapeScenarioRef.create_state(normalized) if selected_scenario == 1 else GrandTourDevRef.create_state(normalized)
+	if selected_scenario == 1: state = EscapeScenarioRef.create_state(normalized)
+	elif selected_scenario == 2: state = Lateral7ScenarioRef.create_state(normalized)
+	else: state = GrandTourDevRef.create_state(normalized)
 	state.player_types = player_types
 	board.selected_ship = state.ships[0].id
-	main_title.text = "  TRIPLANETARY\n  %s · HOT-SEAT %d GIOCATORI" % ["ESCAPE" if selected_scenario == 1 else "GRAND TOUR", normalized.size()]
+	var scenario_name := "ESCAPE" if selected_scenario == 1 else ("LATERAL 7" if selected_scenario == 2 else "GRAND TOUR")
+	main_title.text = "  TRIPLANETARY\n  %s · HOT-SEAT %d GIOCATORI" % [scenario_name, normalized.size()]
 	menu_overlay.visible = false
 	_refresh()
+	if selected_scenario == 2: _show_privacy("P2", "La Marina colloca per prima il Tycho Brahe e tre falsi bersagli nella Fascia.")
 
 func _menu_heading(text: String) -> Label:
 	var label := Label.new(); label.text = text; label.add_theme_font_size_override("font_size", 18); label.add_theme_color_override("font_color", Color("f04b4f")); return label
@@ -246,7 +257,12 @@ func _refresh() -> void:
 	board.state = state; board.queue_redraw()
 	var combat_prompt := "\nPASSARE A %s: scegliere il contrattacco" % state.pending_combat.defender if not state.pending_combat.is_empty() else ""
 	status.text = "GIORNO %d\n%s · %s%s%s" % [state.turn, state.segment, String(state.phase).to_upper(), combat_prompt, "\nVINCITORE: " + state.winner if state.winner != "" else ""]
-	phase_help.text = {"astrogation":"Azzurro tratteggiato: vettore. Giallo fine: spinta. Linea spessa: rotta già percorsa.","ordnance":"Lancia un solo ordigno, se presente a bordo.","movement":"Conferma per applicare vettore, spinta e gravità.","combat":"Dichiara un attacco oppure prosegui.","resupply":"Rifornimento e manutenzione alle basi valide."}.get(state.phase, "")
+	phase_help.text = {"setup":"Clicca un esagono di asteroidi libero per collocare il prossimo segnalino coperto.","astrogation":"Azzurro tratteggiato: vettore. Giallo fine: spinta. Linea spessa: rotta già percorsa.","ordnance":"Lancia un solo ordigno, se presente a bordo.","movement":"Conferma per applicare vettore, spinta e gravità.","combat":"Dichiara un attacco oppure prosegui.","resupply":"Rifornimento e manutenzione alle basi valide."}.get(state.phase, "")
+	if state.phase == "setup":
+		var setup_unit: Dictionary = Lateral7ScenarioRef.next_setup_unit(state)
+		phase_help.text += "\nDa collocare: %s (%d/%d)." % ["nave/segnalino Marina" if setup_unit.get("owner", "") == "P2" else "nave/segnalino Pirati", int(state.get("setup_index", 0)) + 1, Lateral7ScenarioRef.SETUP_UNITS.size()]
+	elif state.get("scenario", "") == "lateral-7" and not state.get("lateral7", {}).get("pending_dummy_removal", {}).is_empty():
+		phase_help.text = "Prima accelerazione: clicca tre falsi bersagli del tuo colore da rimuovere."
 	for child in ships_box.get_children(): child.queue_free()
 	for ship: Dictionary in state.ships:
 		if ship.owner != state.segment and not state.get("knowledge", {}).get(state.segment, {}).get(ship.id, false): continue
@@ -265,7 +281,7 @@ func _refresh() -> void:
 	overload_button.disabled = not GameRulesRef.can_overload(selected) or state.phase != "astrogation"
 	var command: Dictionary = state.commands.get(selected.id, {})
 	weak_button.text = "Prima gravità debole: %s" % ("APPLICA" if command.get("use_first_weak_gravity", false) else "ignora")
-	surface_button.visible = selected.get("landed_at", "") != "" or _landable_body(selected) != ""
+	surface_button.visible = state.phase != "setup" and (selected.get("landed_at", "") != "" or _landable_body(selected) != "")
 	surface_button.text = "DECOLLA" if selected.get("landed_at", "") != "" else "ATTERRA"
 	for kind in ordnance_buttons:
 		ordnance_buttons[kind].visible = kind != "torpedo" and state.phase == "ordnance" and selected.owner == state.segment and selected.inventory.get(kind, 0) > 0
@@ -275,18 +291,38 @@ func _refresh() -> void:
 	attack_button.visible = state.phase == "combat" and not combat_pending and selected.owner == state.segment and not selected.destroyed and not selected.commercial and selected.get("landed_at", "") == "" and _enemy_target(selected.owner) != ""
 	ram_button.visible = state.get("scenario", "") == "escape" and state.phase == "astrogation" and selected.owner == "P1" and selected.get("landed_at", "") == "" and _enemy_target(selected.owner) != ""
 	inspect_button.visible = state.get("scenario", "") == "escape" and state.phase == "resupply" and selected.owner == "P2" and _matching_pilgrim(selected) != ""
+	passenger_button.visible = state.get("scenario", "") == "lateral-7" and state.phase == "resupply" and selected.owner == "P1" and _passenger_holder_matching(selected) != ""
+	load_mine_button.visible = _can_load_lateral_mine(selected)
 	counter_yes_button.visible = combat_pending
 	counter_no_button.visible = combat_pending
-	advance_button.disabled = combat_pending
+	advance_button.disabled = combat_pending or state.phase == "setup"
 
 func _select(id: String) -> void: board.selected_ship = id; overload_planning = false; _refresh()
 func _target_selected(index: int) -> void:
 	selected_target_id = str(target_picker.get_item_metadata(index)) if index >= 0 else ""
 	_refresh()
+func _on_board_hex_clicked(hex: Vector2i) -> void:
+	if state.get("scenario", "") == "lateral-7" and not state.get("lateral7", {}).get("pending_dummy_removal", {}).is_empty():
+		if Lateral7ScenarioRef.remove_dummy_at(state, hex): _refresh()
+		return
+	if state.get("scenario", "") != "lateral-7" or state.phase != "setup": return
+	var old_index: int = int(state.get("setup_index", 0))
+	var old_segment: String = state.segment
+	state = Lateral7ScenarioRef.place_next(state, hex)
+	if int(state.get("setup_index", 0)) == old_index: return
+	_refresh()
+	if old_segment != state.segment and state.phase == "setup": _show_privacy(state.segment, "La Marina ha completato la collocazione. Passare il dispositivo ai Pirati.")
+	elif state.phase == "astrogation": _select_first_owned_ship(); _refresh(); _show_privacy("P1", "Setup completato. Iniziano i Pirati.")
 func _set_thrust(direction: int) -> void:
 	var ship := _selected()
 	if state.phase != "astrogation" or ship.owner != state.segment or ship.fuel <= 0 or ship.destroyed or ship.get("landed_at", "") != "": return
 	var command: Dictionary = state.commands.get(ship.id, {})
+	if state.get("scenario", "") == "lateral-7" and ship.get("first_acceleration_pending", false) and not command.get("dummies_removed", false):
+		if Lateral7ScenarioRef.begin_dummy_removal(state, ship.id, [HexMathRef.DIRECTIONS[direction]]):
+			state.log.append("Prima accelerazione di %s: rimuovere tre falsi bersagli" % ship.name)
+		else:
+			state.log.append("Il Tycho Brahe non può muovere finché un pirata non viene rilevato")
+		_refresh(); return
 	var steps: Array = command.get("thrust_steps", [])
 	if overload_planning:
 		if not GameRulesRef.can_overload(ship): return
@@ -347,6 +383,17 @@ func _plan_ram() -> void:
 	command.ram_target_id = target_id
 	state.commands[ship.id] = command
 	state.log.append("Speronamento pianificato da %s" % ship.name)
+	_refresh()
+func _transfer_passengers() -> void:
+	var target := _selected()
+	var holder_id := _passenger_holder_matching(target)
+	if holder_id == "": return
+	state = Lateral7ScenarioRef.transfer_passengers(state, holder_id, target.id)
+	ReplayRulesRef.record(state, "Trasferimento passeggeri")
+	_refresh()
+func _load_lateral_mine() -> void:
+	state = Lateral7ScenarioRef.load_mine(state, _selected().id)
+	ReplayRulesRef.record(state, "Carico mina a Clandestine")
 	_refresh()
 func _counter(enabled: bool) -> void:
 	state = GameRulesRef.respond_to_attack(state, enabled)
@@ -431,6 +478,8 @@ func _refresh_replay() -> void:
 func _open_help() -> void:
 	if state.get("scenario", "") == "escape":
 		help_body.text = "OBIETTIVO · ESCAPE\nI Pellegrini devono portare il trasporto con i fuggitivi fuori dal bordo oltre Giove. Per la vittoria decisiva deve restare carburante sufficiente ad annullare il vettore, più un punto.\n\nPELLEGRINI — Tre trasporti partono dalla Terra. Solo il giocatore P1 vede quale contiene i fuggitivi. Possono speronare, ma non usare mine o siluri.\n\nENFORCERS — Una corvetta orbita la Terra e un corsaro orbita Venere. Seleziona il bersaglio nel blocco Azioni. A rotta e posizione coincidenti, durante Rifornimento usa Ispeziona/Cattura. Un trasporto disabilitato con i fuggitivi può essere catturato e riportato a Terra, Venere o Io.\n\nVITTORIA — La fuga può essere decisiva o marginale; la distruzione di un Enforcer durante il sacrificio dà una vittoria morale ai Pellegrini. Cattura e ritorno a una base danno vittoria decisiva agli Enforcers.\n\nMAPPA — Rotella per zoomare; trascina per scorrere. Vettore azzurro, spinta gialla, rotta percorsa continua."
+	elif state.get("scenario", "") == "lateral-7":
+		help_body.text = "OBIETTIVO · LATERAL 7\nI Pirati devono affiancare il liner, trasferire i passeggeri e portarli a Clandestine. La Marina deve condurre il liner a Ganimede. Se i passeggeri vengono distrutti, perdono entrambi.\n\nSETUP — La Marina colloca per prima il Tycho Brahe e tre falsi bersagli in esagoni asteroidali liberi; i Pirati collocano poi tre navi e nove falsi bersagli. Clicca gli esagoni indicati sulla plancia. Tutte le unità reali partono ferme.\n\nFALSI BERSAGLI — Alla prima accelerazione di ciascuna nave pirata, clicca tre dummy pirata da rimuovere. Il dreadnought rimuove i suoi tre dummy alla prima accelerazione e non può muovere finché una nave o base non rileva un pirata.\n\nPASSEGGERI — Con una nave pirata sulla stessa posizione e con lo stesso vettore del liner, usa Trasferisci passeggeri durante Rifornimento. Arriva fermo a Clandestine per vincere.\n\nDOTAZIONI — Ogni corsaro pirata ha una mina. Il Tycho Brahe ha una mina e un siluro. I Pirati attraversano liberamente gli asteroidi blu intorno a Clandestine."
 	else:
 		help_body.text = "OBIETTIVO · GRAND TOUR\nAttraversa almeno un campo di gravità piena di ogni corpo e torna ad atterrare sulla Terra.\n\n1 · ASTROGAZIONE — Seleziona la nave e una direzione di spinta, oppure Nessuna spinta. Il vettore è azzurro tratteggiato; la spinta è il tratteggio giallo più fine e termina nell'esagono di arrivo. La rotta effettivamente percorsa resta come arco continuo e spesso.\n\n2 · ORDNANCE — Se disponibili, lancia mine, siluri o testate.\n\n3 · MOVIMENTO — Premi Avanza fase: inerzia, spinta e gravità pendente vengono applicate.\n\n4 · COMBATTIMENTO — Seleziona il bersaglio, dichiara l’attacco e lascia scegliere il contrattacco.\n\n5 · RIFORNIMENTO — Atterrando su Terra, Venere, Marte o Callisto recuperi carburante e sovraccarico.\n\nMAPPA — Usa la rotella per ingrandire o ridurre e trascina con il tasto sinistro o centrale.\n\nDECOLLO — Premi Decolla, poi pianifica almeno una spinta nel turno successivo: senza spinta la nave ricade."
 	help_overlay.visible = true
@@ -485,3 +534,14 @@ func _matching_pilgrim(inspector: Dictionary) -> String:
 	for ship: Dictionary in state.ships:
 		if ship.owner == "P1" and not ship.destroyed and not ship.get("escaped", false) and not ship.get("captured", false) and ship.position == inspector.position and ship.velocity == inspector.velocity: return ship.id
 	return ""
+
+func _passenger_holder_matching(target: Dictionary) -> String:
+	var holder_id: String = state.get("lateral7", {}).get("passenger_holder", "")
+	for ship: Dictionary in state.ships:
+		if ship.id == holder_id and not ship.destroyed and ship.position == target.position and ship.velocity == target.velocity: return holder_id
+	return ""
+
+func _can_load_lateral_mine(ship: Dictionary) -> bool:
+	if state.get("scenario", "") != "lateral-7" or state.phase != "resupply" or ship.owner != "P1": return false
+	var clandestine: Dictionary = state.bodies.filter(func(body): return body.id == "clandestine")[0]
+	return ship.position == clandestine.hex and ship.velocity == Vector2i.ZERO and not ship.destroyed
