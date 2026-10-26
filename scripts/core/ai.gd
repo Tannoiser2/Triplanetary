@@ -67,6 +67,7 @@ static func plan_astrogation(state: Dictionary) -> void:
 			Rules.set_plot(state, s.id, {"burns": []})
 
 static func _decide(state: Dictionary, s: Dictionary) -> Dictionary:
+	if not state.has("ai"): state.ai = {}
 	if Rules.is_disabled(state, s): return {}
 	match state.scenario:
 		"grand-tour": return _grand_tour(state, s)

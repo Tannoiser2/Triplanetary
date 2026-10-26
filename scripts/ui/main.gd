@@ -342,6 +342,13 @@ func _flow() -> void:
 			await _show_privacy(who)
 		shown_for = who
 		board.viewer = who
+		if not state.pending_attack.is_empty():
+			# l'IA ha attaccato una nave umana: si decide il contrattacco
+			if dialog == null:
+				busy = false
+				_refresh()
+				_show_counter_dialog()
+			return
 		_auto_select(who)
 		if _auto_skip():
 			var log_n2: int = state.log.size()
