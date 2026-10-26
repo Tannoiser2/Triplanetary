@@ -13,6 +13,7 @@ const BaseRulesRef = preload("res://scripts/engine/bases.gd")
 const ReplayRulesRef = preload("res://scripts/engine/replay.gd")
 const ShipFactoryRef = preload("res://scripts/data/ship_factory.gd")
 const BoardRef = preload("res://scripts/ui/board.gd")
+const MainRef = preload("res://scripts/ui/main.gd")
 
 var failures := 0
 
@@ -113,7 +114,12 @@ func _init() -> void:
 	_check(two_player.ships[1].position == p2_from + Vector2i(1,0) and two_player.ships[0].position != two_player.ships[1].position, "il secondo giocatore esegue la propria spinta")
 	var board := BoardRef.new(); board.size = Vector2(800, 600); var old_zoom: float = board.camera_zoom; board._zoom_at(Vector2(400,300), 1.18)
 	_check(board.camera_zoom > old_zoom, "zoom plancia mantiene un livello navigabile")
+	_check(board.axial_to_pixel(board._offset_to_axial(24, 22)) == Vector2(735.5, 925.5), "griglia logica calibrata sui centri della scansione")
 	board.free()
+	var main_ui := MainRef.new(); main_ui._ready()
+	main_ui.state = GrandTourDevRef.create_state(["Ada", "Bruno"]); main_ui.state.phase = "resupply"; main_ui._refresh(); main_ui._advance()
+	_check(main_ui.state.segment == "P2" and main_ui.board.selected_ship == "p2", "interfaccia seleziona P2 prima di ridisegnare il nuovo segmento")
+	main_ui.queue_free()
 	var escape_state: Dictionary = EscapeScenarioRef.create_state(["Pellegrini", "Enforcers"])
 	_check(escape_state.ships.size() == 5 and escape_state.ships.filter(func(item): return item.get("secret_cargo", false)).size() == 1 and escape_state.bases.size() == 3, "Escape prepara flotte, identità segreta e sole tre basi")
 	var fugitive: Dictionary = escape_state.ships[0]; fugitive.landed_at = ""; fugitive.position = Vector2i(55, -10); fugitive.previous_position = fugitive.position; fugitive.velocity = Vector2i(1, 0); escape_state.phase = "movement"
@@ -162,7 +168,7 @@ func _init() -> void:
 	var mine_state: Dictionary = dummy_state.duplicate(true); var mine_ship: Dictionary = mine_state.ships.filter(func(item): return item.owner == "P1" and item.type == "corsair")[0]; var mine_clandestine: Dictionary = mine_state.bodies.filter(func(item): return item.id == "clandestine")[0]
 	mine_state.phase = "resupply"; mine_ship.position = mine_clandestine.hex; mine_ship.velocity = Vector2i.ZERO; mine_ship.inventory.mine = 0; mine_state = Lateral7ScenarioRef.load_mine(mine_state, mine_ship.id)
 	_check(mine_state.ships.filter(func(item): return item.id == mine_ship.id)[0].inventory.mine == 1, "Lateral 7 rende disponibili le mine ai Pirati a Clandestine entro la stiva")
-	if failures == 0: print("OK: 55 test")
+	if failures == 0: print("OK: 57 test")
 	quit(failures)
 
 func _check(value: bool, label: String) -> void:

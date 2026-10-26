@@ -6,6 +6,7 @@ const GrandTourDevRef = preload("res://scripts/data/grand_tour_dev.gd")
 const EscapeScenarioRef = preload("res://scripts/data/escape.gd")
 const Lateral7ScenarioRef = preload("res://scripts/data/lateral7.gd")
 const BoardRef = preload("res://scripts/ui/board.gd")
+const ThrustSelectorRef = preload("res://scripts/ui/thrust_selector.gd")
 const PersistenceRef = preload("res://scripts/engine/persistence.gd")
 const OrdnanceRulesRef = preload("res://scripts/engine/ordnance.gd")
 const ReplayRulesRef = preload("res://scripts/engine/replay.gd")
@@ -17,6 +18,7 @@ var ships_box: VBoxContainer
 var log_label: Label
 var overload_button: Button
 var weak_button: Button
+var thrust_selector: Control
 var surface_button: Button
 var attack_button: Button
 var inspect_button: Button
@@ -88,15 +90,11 @@ func _build_ui() -> void:
 	var ship_scroll := ScrollContainer.new(); ship_scroll.custom_minimum_size.y = 58; ship_scroll.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED; info_section.add_child(ship_scroll)
 	ships_box = VBoxContainer.new(); ships_box.size_flags_horizontal = Control.SIZE_EXPAND_FILL; ship_scroll.add_child(ships_box)
 	var thrust_section := _make_section(controls_column, "VETTORE E SPINTA")
-	var grid := GridContainer.new(); grid.columns = 3; thrust_section.add_child(grid)
-	var direction_labels := ["EST  1", "NE  2", "NO  3", "OVEST  4", "SO  5", "SE  6"]
-	for i in range(6):
-		var button := Button.new(); button.text = direction_labels[i]; button.tooltip_text = "Spinta nella direzione %d" % (i + 1); button.pressed.connect(_set_thrust.bind(i)); grid.add_child(button)
+	thrust_selector = ThrustSelectorRef.new(); thrust_selector.tooltip_text = "Clicca uno dei sei esagoni per scegliere la direzione di spinta"; thrust_selector.direction_selected.connect(_set_thrust); thrust_section.add_child(thrust_selector)
 	overload_button = Button.new(); overload_button.pressed.connect(_toggle_overload); thrust_section.add_child(overload_button)
 	weak_button = Button.new(); weak_button.pressed.connect(_toggle_weak_gravity); thrust_section.add_child(weak_button)
 	var coast := Button.new(); coast.text = "NESSUNA SPINTA"; coast.pressed.connect(_coast); thrust_section.add_child(coast)
-	# Le azioni restano sempre visibili; solo stato e pianificazione scorrono se lo spazio è ridotto.
-	var actions_section := _make_section(panel, "AZIONI")
+	var actions_section := _make_section(controls_column, "AZIONI")
 	var target_row := HBoxContainer.new(); actions_section.add_child(target_row)
 	var target_label := Label.new(); target_label.text = "BERSAGLIO"; target_label.custom_minimum_size.x = 82; target_row.add_child(target_label)
 	target_picker = OptionButton.new(); target_picker.size_flags_horizontal = Control.SIZE_EXPAND_FILL; target_picker.item_selected.connect(_target_selected); target_row.add_child(target_picker)
@@ -117,7 +115,7 @@ func _build_ui() -> void:
 	counter_yes_button = Button.new(); counter_yes_button.text = "CONTRATTACCA"; counter_yes_button.pressed.connect(_counter.bind(true)); actions_grid.add_child(counter_yes_button)
 	counter_no_button = Button.new(); counter_no_button.text = "RINUNCIA AL CONTRATTACCO"; counter_no_button.pressed.connect(_counter.bind(false)); actions_grid.add_child(counter_no_button)
 	advance_button = Button.new(); advance_button.text = "AVANZA FASE"; advance_button.custom_minimum_size.y = 36; advance_button.pressed.connect(_advance); actions_grid.add_child(advance_button)
-	var log_section := _make_section(panel, "REGISTRO")
+	var log_section := _make_section(controls_column, "REGISTRO")
 	var log_scroll := ScrollContainer.new(); log_scroll.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED; log_scroll.custom_minimum_size.y = 120; log_section.add_child(log_scroll)
 	log_label = Label.new(); log_label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART; log_label.size_flags_horizontal = Control.SIZE_EXPAND_FILL; log_scroll.add_child(log_label)
 	_build_privacy_overlay()
@@ -257,7 +255,7 @@ func _refresh() -> void:
 	board.state = state; board.queue_redraw()
 	var combat_prompt := "\nPASSARE A %s: scegliere il contrattacco" % state.pending_combat.defender if not state.pending_combat.is_empty() else ""
 	status.text = "GIORNO %d\n%s · %s%s%s" % [state.turn, state.segment, String(state.phase).to_upper(), combat_prompt, "\nVINCITORE: " + state.winner if state.winner != "" else ""]
-	phase_help.text = {"setup":"Clicca un esagono di asteroidi libero per collocare il prossimo segnalino coperto.","astrogation":"Azzurro tratteggiato: vettore. Giallo fine: spinta. Linea spessa: rotta già percorsa.","ordnance":"Lancia un solo ordigno, se presente a bordo.","movement":"Conferma per applicare vettore, spinta e gravità.","combat":"Dichiara un attacco oppure prosegui.","resupply":"Rifornimento e manutenzione alle basi valide."}.get(state.phase, "")
+	phase_help.text = {"setup":"Clicca un esagono di asteroidi libero per collocare il prossimo segnalino coperto.","astrogation":"Seleziona la spinta sul diagramma esagonale. Azzurro: vettore; rosso: gravità; giallo: spinta; arco spesso: rotta.","ordnance":"Lancia un solo ordigno, se presente a bordo.","movement":"Conferma per applicare vettore, spinta e gravità.","combat":"Dichiara un attacco oppure prosegui.","resupply":"Rifornimento e manutenzione alle basi valide."}.get(state.phase, "")
 	if state.phase == "setup":
 		var setup_unit: Dictionary = Lateral7ScenarioRef.next_setup_unit(state)
 		phase_help.text += "\nDa collocare: %s (%d/%d)." % ["nave/segnalino Marina" if setup_unit.get("owner", "") == "P2" else "nave/segnalino Pirati", int(state.get("setup_index", 0)) + 1, Lateral7ScenarioRef.SETUP_UNITS.size()]
@@ -280,6 +278,10 @@ func _refresh() -> void:
 	overload_button.text = "Sovraccarico: %s" % ("ATTIVO" if overload_planning else "spento")
 	overload_button.disabled = not GameRulesRef.can_overload(selected) or state.phase != "astrogation"
 	var command: Dictionary = state.commands.get(selected.id, {})
+	thrust_selector.enabled = state.phase == "astrogation" and selected.owner == state.segment and not selected.destroyed and selected.get("landed_at", "") == ""
+	thrust_selector.selected_direction = -1
+	if command.get("thrust_steps", []).size() == 1: thrust_selector.selected_direction = HexMathRef.DIRECTIONS.find(command.thrust_steps[0])
+	thrust_selector.queue_redraw()
 	weak_button.text = "Prima gravità debole: %s" % ("APPLICA" if command.get("use_first_weak_gravity", false) else "ignora")
 	surface_button.visible = state.phase != "setup" and (selected.get("landed_at", "") != "" or _landable_body(selected) != "")
 	surface_button.text = "DECOLLA" if selected.get("landed_at", "") != "" else "ATTERRA"
@@ -415,11 +417,11 @@ func _launch_torpedo(direction: int, magnitude: int) -> void:
 func _advance() -> void:
 	var old_segment: String = state.segment
 	state = GameRulesRef.advance_phase(state)
+	if state.segment != old_segment: _select_first_owned_ship()
 	ReplayRulesRef.record(state, "Avanzamento fase")
 	PersistenceRef.save_game(state)
 	_refresh()
 	if state.segment != old_segment:
-		_select_first_owned_ship()
 		_show_privacy(state.segment, "Inizia il segmento di %s. Passa il dispositivo senza mostrare la plancia." % state.segment)
 func _reset() -> void: overload_planning = false; _show_main_menu()
 func _save() -> void:

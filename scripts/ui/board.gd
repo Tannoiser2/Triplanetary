@@ -6,9 +6,10 @@ signal hex_clicked(hex: Vector2i)
 var state: Dictionary
 var selected_ship := "p1"
 const MAP_SIZE := Vector2(2048, 1447)
-const HEX_X := 36.0
-const HEX_Y := 41.0
-const ORIGIN := Vector2(25, 25)
+const HEX_X := 30.0
+const HEX_Y := 40.5
+const ORIGIN := Vector2(15.5, 34.5)
+const HEX_HALF_WIDTH := 20.0
 const PLAYER_COLORS := [Color("59d6c7"), Color("ff6f76"), Color("f4c95d"), Color("9b8cff"), Color("ff9f43"), Color("74b9ff")]
 var map_texture: Texture2D
 var camera_zoom := 1.0
@@ -140,7 +141,7 @@ func _draw() -> void:
 			for thrust_step: Vector2i in command.get("thrust_steps", []):
 				var thrust_end: Vector2i = cursor_hex + thrust_step
 				draw_dashed_line(axial_to_pixel(cursor_hex), axial_to_pixel(thrust_end), Color("d39a00"), 1.4, 5.0)
-				_draw_marker_hex(axial_to_pixel(thrust_end), 23.5, Color("d39a00"), 2.0)
+				_draw_marker_hex(axial_to_pixel(thrust_end), 20.0, Color("d39a00"), 2.0)
 				cursor_hex = thrust_end
 			if command.get("thrust_steps", []).is_empty() and ship.get("pending_gravity", []).is_empty():
 				draw_circle(vector_end, 7, Color("238fbd80"), false, 1.5)
@@ -171,7 +172,7 @@ func _draw_maneuver_history(ship: Dictionary) -> void:
 		for thrust: Vector2i in maneuver.get("thrust_steps", []):
 			var thrust_end: Vector2i = cursor_hex + thrust
 			draw_dashed_line(axial_to_pixel(cursor_hex), axial_to_pixel(thrust_end), Color("d39a00c8"), 1.2, 5.0)
-			_draw_marker_hex(axial_to_pixel(thrust_end), 23.5, Color("d39a0099"), 1.2)
+			_draw_marker_hex(axial_to_pixel(thrust_end), 20.0, Color("d39a0099"), 1.2)
 			cursor_hex = thrust_end
 
 func _draw_route_arc(from: Vector2, to: Vector2, color: Color) -> void:
@@ -186,8 +187,14 @@ func _draw_route_arc(from: Vector2, to: Vector2, color: Color) -> void:
 	draw_polyline(points, color, 5.0, true)
 
 func _draw_marker_hex(center: Vector2, radius: float, color: Color, width: float) -> void:
-	var points := PackedVector2Array()
-	for i in range(6): points.append(center + Vector2.from_angle(deg_to_rad(60.0 * i)) * radius)
+	# La scansione non contiene esagoni perfettamente regolari: questa è la sagoma misurata sulla griglia stampata.
+	var half_width := HEX_HALF_WIDTH * radius / 20.0
+	var half_height := HEX_Y * 0.5 * radius / 20.0
+	var points := PackedVector2Array([
+		center + Vector2(half_width, 0), center + Vector2(half_width * 0.5, half_height),
+		center + Vector2(-half_width * 0.5, half_height), center + Vector2(-half_width, 0),
+		center + Vector2(-half_width * 0.5, -half_height), center + Vector2(half_width * 0.5, -half_height)
+	])
 	points.append(points[0])
 	draw_polyline(points, color, width, true)
 
@@ -195,10 +202,5 @@ func _offset_to_axial(column: int, row: int) -> Vector2i:
 	return Vector2i(column, row - (column - (column & 1)) / 2)
 
 func _draw_hex(hex: Vector2i, color: Color) -> void:
-	var center := axial_to_pixel(hex)
-	var points := PackedVector2Array()
-	for i in range(6):
-		points.append(center + Vector2.from_angle(deg_to_rad(60.0 * i)) * 24.0)
-	points.append(points[0])
-	draw_polyline(points, color, 1)
+	_draw_marker_hex(axial_to_pixel(hex), 20.0, color, 1.0)
 
