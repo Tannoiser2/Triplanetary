@@ -102,11 +102,8 @@ func _build_main_menu() -> void:
 	var layout := HBoxContainer.new(); layout.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT, Control.PRESET_MODE_MINSIZE, 54); layout.add_theme_constant_override("separation", 48); menu_overlay.add_child(layout)
 	var art_panel := VBoxContainer.new(); art_panel.custom_minimum_size.x = 430; layout.add_child(art_panel)
 	var cover := TextureRect.new(); cover.expand_mode = TextureRect.EXPAND_FIT_WIDTH_PROPORTIONAL; cover.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED; cover.size_flags_vertical = Control.SIZE_EXPAND_FILL; art_panel.add_child(cover)
-	if ResourceLoader.exists("res://assets/local-reference/cover-original.png"):
-		cover.texture = load("res://assets/local-reference/cover-original.png")
-	else:
-		cover.texture = load("res://assets/ui/menu-cover.svg")
-	var rights := Label.new(); rights.text = "Edizione digitale non ufficiale · uso personale\nLa build pubblica usa esclusivamente grafica sostitutiva originale."; rights.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART; rights.modulate = Color("9db2c6"); art_panel.add_child(rights)
+	cover.texture = load("res://assets/ui/original-cover.webp")
+	var rights := Label.new(); rights.text = "Edizione digitale non ufficiale · uso personale\nCopertina fornita dall’utente; diritti dell’opera ai rispettivi autori ed editori."; rights.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART; rights.modulate = Color("9db2c6"); art_panel.add_child(rights)
 	var form := VBoxContainer.new(); form.size_flags_horizontal = Control.SIZE_EXPAND_FILL; form.alignment = BoxContainer.ALIGNMENT_CENTER; layout.add_child(form)
 	var brand := Label.new(); brand.text = "TRIPLANETARY"; brand.add_theme_font_size_override("font_size", 48); brand.modulate = Color("e7f5ff"); form.add_child(brand)
 	var subtitle := Label.new(); subtitle.text = "COMBATTIMENTO SPAZIALE NEL SISTEMA SOLARE"; subtitle.add_theme_font_size_override("font_size", 16); subtitle.modulate = Color("74c9e8"); form.add_child(subtitle)
