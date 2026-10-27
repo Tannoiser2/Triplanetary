@@ -10,6 +10,7 @@ Aggiornato al 26 ottobre 2026 — riscrittura completa e tutti gli otto scenari 
 - Sistemi comuni: acquisto di flotte a punti di forza o in MegaCrediti, schieramento su basi, orbite o spazio libero, basi orbitali, cattura delle basi, soppressione e devastazione dei lati planetari, economia e depositi di ordigni.
 - IA per tutti gli scenari e per tutte le parti.
 - Hot-seat, schermata di passaggio, salvataggi, export Web.
+- Gioco online su Firebase (stanze con codice, posti IA giocati da chi crea la stanza, rientro, subentro dell'IA per gli assenti).
 - Interruttori di visualizzazione ROTTE, DERIVA e RADAR (tasti R, D, V), ricordati fra una sessione e l'altra.
 - 95 controlli automatici in `tests/run_tests.gd`, comprese partite complete IA contro IA in tutti gli scenari.
 
@@ -30,6 +31,5 @@ Aggiornato al 26 ottobre 2026 — riscrittura completa e tutti gli otto scenari 
 
 ## Da fare
 
-- Multiplayer online su Firebase come negli altri giochi della ludoteca.
 - Variante "rotta obbligata" del Grand Tour e variante a pedine coperte di The Fleet Mutiny.
 - IA: il Prospecting automatico è prudente ma non ottimizza il commercio.

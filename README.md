@@ -19,6 +19,7 @@ Versione digitale per uso personale di *Triplanetary* (Game Designers' Workshop,
   - *Interplanetary War*: flotte in MegaCrediti, depositi di ordigni, testate nucleari, produzione delle basi e crediti da trasportare con navi commerciali;
   - *Prospecting* (2–6 cercatori): prospezione a velocità 1, minerale e schegge CT, miniere automatiche, guardie robot, mercati di Ceres e Luna.
 - **Avversario IA**: pianifica le rotte con una ricerca A* sugli stati vettoriali (posizione, velocità, gravità in sospeso), gestisce carburante e rifornimenti, intercetta, combatte, ispeziona. Non sbircia le informazioni nascoste.
+- **Gioco online** su Firebase, come gli altri giochi della ludoteca (vedi sotto).
 - **Hot-seat** con schermata di passaggio negli scenari con informazioni nascoste, salvataggio automatico, slot manuale e salvataggio portabile negli appunti.
 
 ## Comandi
@@ -38,6 +39,34 @@ Versione digitale per uso personale di *Triplanetary* (Game Designers' Workshop,
 
 La guida completa è nel pulsante **GUIDA** del gioco.
 
+## Gioco online
+
+Dal menu, sotto il dettaglio dello scenario, **GIOCA ONLINE** (anche dalla versione web). Usa lo stesso progetto
+Firebase degli altri giochi (Realtime Database), con le stanze sotto `triplanetary/rooms`.
+
+- **Chi crea la stanza** prepara gli equipaggi nel menu: il primo posto *UMANO* è il suo, gli altri posti
+  *UMANO* sono per gli amici, i posti *IA* li gioca il suo dispositivo. Scrive il nome, preme *Crea una stanza*
+  e comunica il codice di 4 lettere. Quando ci sono tutti preme *Inizia online*: i posti rimasti liberi li gioca l'IA.
+- **Gli amici** scrivono il nome e il codice e premono *Entra*.
+- **Come si sincronizza.** Un solo dispositivo alla volta ha la mano: quello del giocatore di turno (o di chi
+  ha creato la stanza, per i colori IA). Quando la mano passa, chi la lascia pubblica nel registro della stanza
+  (`acts/0`, `acts/1`, …) un'istantanea compressa dello stato, con gli spostamenti da animare; gli altri la
+  ricevono e proseguono. Ogni istantanea pesa circa 5 kB. Ognuno vede la plancia dal punto di vista del proprio
+  colore, quindi le informazioni nascoste restano nascoste (nessuna schermata di passaggio).
+- **Se cade la linea** si rientra dal menu con *Rientra nella stanza* (o con lo stesso codice ed *Entra*).
+  Se un giocatore non dà segni di vita per un minuto, al suo posto gioca l'IA di chi ha creato la stanza
+  finché non rientra.
+
+**Configurazione Firebase.** Le stanze di Triplanetary sono coperte dalla regola generica `$game` già usata
+dagli altri giochi; `firebase/database.rules.json` contiene comunque l'unione delle regole di tutti i giochi
+della ludoteca più una sezione esplicita `triplanetary`. Se la creazione della stanza risponde
+"Permission denied", vanno pubblicate nella console di Firebase (Realtime Database → Regole).
+
+**Prove senza Firebase.** `tests/firebase_mock.py` è un finto Firebase locale. Con `TP_DB_URL`, `TP_AUTH_URL`
+e `TP_REFRESH_URL` che puntano lì, `tests/online_play.gd` fa giocare una partita a due istanze
+(`TP_ROLE=host` e `guest`, scenario in `TP_SCENARIO`; con `TP_DROP=1` l'ospite esce e rientra). Ognuna stampa
+l'impronta dello stato per ogni voce del registro: devono coincidere.
+
 ## Sviluppo
 
 ```bash
@@ -51,6 +80,8 @@ La workflow `.github/workflows/pages.yml` pubblica la cartella `docs/` a ogni pu
 ```text
 scripts/core/   regole pure e deterministiche: geometria, mappa, regole, scenari, IA, salvataggi
 scripts/ui/     plancia, interfaccia, grafica procedurale, widget
+scripts/net/    Firebase (REST) e partita online a istantanee
+firebase/       regole del Realtime Database
 data/map.json   plancia trascritta (generata da tools/build_map.py)
 tools/          trascrizione della mappa e mappa sorgente di riferimento (escluse dalla build)
 ludoteca/       scheda e copertina per la Ludoteca Virtuale

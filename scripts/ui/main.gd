@@ -78,6 +78,13 @@ func _view_toggle(text: String, tip_s: String, key: String, default_on: bool) ->
 
 # schermate
 var menu: Control
+## Collegamento a Firebase (resta vivo fra menu e partita) e partita online in corso (null se locale).
+var net: Net
+var online: Online = null
+var lobby := {}               # stanza in preparazione: {code, seat, role, config}
+var lobby_box: Control
+var autoplay := false         # prove automatiche: l'IA gioca anche per il giocatore locale
+var _gen := 0                 # cambia a ogni nuova partita: ferma le attese della precedente
 var privacy: Control
 var dialog: Control
 var victory: Control
@@ -97,6 +104,8 @@ func _ready() -> void:
 	board.hex_clicked.connect(_on_hex_clicked)
 	board.hex_hovered.connect(_on_hex_hovered)
 	add_child(board)
+	net = Net.new()
+	add_child(net)
 	_build_hud()
 	_build_menu()
 	_build_help()
@@ -292,7 +301,11 @@ func _layout() -> void:
 
 # ================================================================ avvio partita
 
-func _start_game(st: Dictionary) -> void:
+func _start_game(st: Dictionary, net_game := false) -> void:
+	if not net_game and online != null: _leave_online()
+	_gen += 1
+	busy = false
+	if dialog != null: dialog.queue_free(); dialog = null
 	state = st
 	sel = ""
 	mode = ""
@@ -329,6 +342,7 @@ func _append_log(e: Dictionary) -> void:
 # ================================================================ flusso delle fasi
 
 func _human_seat() -> String:
+	if online != null: return online.pid
 	for p in state.players:
 		if p.type == "human": return p.id
 	return ""
@@ -340,9 +354,11 @@ func _active_player() -> String:
 	return Rules.current_player(state)
 
 func _is_human(pid: String) -> bool:
+	if online != null: return pid == online.pid
 	return Rules.player(state, pid).get("type", "human") == "human"
 
 func _needs_privacy() -> bool:
+	if online != null: return false
 	if not state.rules.get("hidden", false) and state.scenario != "escape": return false
 	var humans = state.players.filter(func(p): return p.type == "human")
 	return humans.size() >= 2
@@ -352,19 +368,40 @@ func _needs_privacy() -> bool:
 func _flow() -> void:
 	if busy: return
 	busy = true
+	if online != null: online.watching = false
+	var gen := _gen
 	var guard := 0
 	while not state.over and guard < 400:
 		guard += 1
 		var who := _active_player()
-		if not _is_human(who):
+		if online != null and not online.controls(state, who):
+			# decide un altro dispositivo: si passa la mano e si aspetta la sua istantanea
+			board.viewer = online.pid
+			thinking.text = "In attesa di %s…" % Rules.player(state, who).name
+			_refresh()
+			var pk := await online.handoff(state, who)
+			if gen != _gen: return
+			thinking.text = ""
+			if pk.is_empty(): break
+			if pk.has("takeover"): continue
+			await _apply_packet(pk)
+			if gen != _gen: return
+			guard = 0
+			continue
+		if not _is_human(who) or autoplay:
+			if online != null and online.away.has(who) and await online.check_back(state, who):
+				if gen != _gen: return
+				continue
 			board.viewer = _human_seat() if _human_seat() != "" else who
 			thinking.text = "%s sta pianificando…" % Rules.player(state, who).name
 			_refresh()
 			await get_tree().process_frame
 			await get_tree().process_frame
+			if gen != _gen: return
 			var before_phase: String = state.phase
 			var log_n: int = state.log.size()
-			AI.play_step(state)
+			if not state.pending_attack.is_empty(): AI.respond_counter(state)   # anche per un umano assente
+			else: AI.play_step(state)
 			thinking.text = ""
 			_after_step(log_n)
 			if before_phase == "ordnance" and state.phase == "combat" or state.phase == "combat" and not state.moves.is_empty() and before_phase == "ordnance":
@@ -372,10 +409,12 @@ func _flow() -> void:
 			if state.get("moves", []).size() > 0 and before_phase == "ordnance":
 				await _animate_moves()
 			await get_tree().create_timer(0.12 / anim_speed).timeout
+			if gen != _gen: return
 			continue
 		# giocatore umano
 		if _needs_privacy() and shown_for != who:
 			await _show_privacy(who)
+			if gen != _gen: return
 		shown_for = who
 		board.viewer = who
 		if not state.pending_attack.is_empty():
@@ -396,6 +435,13 @@ func _flow() -> void:
 		break
 	busy = false
 	_refresh()
+	if online != null:
+		if state.over:
+			var o := online
+			await o.publish(state)
+			o.finish()
+		else:
+			online.watch()
 	if state.over: _show_victory()
 
 var _focus_key := ""
@@ -432,11 +478,12 @@ func _auto_select(who: String) -> void:
 func _after_step(log_from: int) -> void:
 	for i in range(log_from, state.log.size()): _append_log(state.log[i])
 	for f in state.get("fx", []): board.add_fx(f.kind, f.hex, 0.75 / anim_speed if state.phase == "combat" else 0.0)
-	Persistence.save_slot(state, "auto")
+	Persistence.save_slot(state, "online" if online != null else "auto")
 
-func _animate_moves() -> void:
+func _animate_moves(record := true) -> void:
 	var moves: Array = state.get("moves", [])
 	if moves.is_empty(): return
+	if record and online != null: online.moves_out.append(moves.duplicate(true))
 	board.anim_moves = {}
 	for m in moves:
 		board.anim_moves[m.id] = {"from": Board.world(m.from), "to": Board.world(m.to)}
@@ -1518,6 +1565,11 @@ func _fire() -> void:
 			board.fx_list.append({"kind": "fire", "world": Board.world(Rules.ship(state, a).pos), "to": Board.world(Rules.ship(state, t).pos), "t0": board._time})
 	attackers = []; targets = []
 	var defender: String = state.pending_attack.defender
+	if online != null and not online.controls(state, defender):
+		# risponde un giocatore su un altro dispositivo
+		_refresh()
+		_flow()
+		return
 	if not _is_human(defender):
 		var n = state.log.size()
 		AI.respond_counter(state)
@@ -1683,6 +1735,14 @@ func _open_game_menu() -> void:
 	var close := func(): dialog.queue_free(); dialog = null
 	var items := [
 		["RIPRENDI", func(): close.call()],
+	]
+	if online != null:
+		items.append(["COPIA IL SALVATAGGIO NEGLI APPUNTI", func():
+			DisplayServer.clipboard_set(Persistence.to_json(state)); _toast("Salvataggio copiato"); close.call()])
+		items.append(["VELOCITÀ ANIMAZIONI: %s" % ("RAPIDA" if anim_speed > 1.0 else "NORMALE"), func():
+			anim_speed = 1.0 if anim_speed > 1.0 else 2.2; close.call()])
+		items.append(["ESCI (SI PUÒ RIENTRARE CON IL CODICE %s)" % online.code, func(): close.call(); _show_menu()])
+	else: items.append_array([
 		["SALVA (slot 1)", func():
 			Persistence.save_slot(state, "slot1"); _toast("Partita salvata"); close.call()],
 		["CARICA (slot 1)", func():
@@ -1700,7 +1760,7 @@ func _open_game_menu() -> void:
 		["VELOCITÀ ANIMAZIONI: %s" % ("RAPIDA" if anim_speed > 1.0 else "NORMALE"), func():
 			anim_speed = 1.0 if anim_speed > 1.0 else 2.2; close.call()],
 		["ESCI AL MENU PRINCIPALE", func(): close.call(); _show_menu()],
-	]
+	])
 	for it in items:
 		var b := Button.new(); b.text = it[0]; b.custom_minimum_size = Vector2(0, 44)
 		b.pressed.connect(it[1])
@@ -1757,6 +1817,9 @@ Rotella: zoom · trascina: sposta la plancia · R: rotte percorse · D: vettori 
 # ================================================================ menu principale
 
 func _show_menu() -> void:
+	if online != null: _leave_online()
+	_gen += 1
+	busy = false
 	menu.visible = true
 	hud.visible = false
 	board.visible = false
@@ -1917,6 +1980,7 @@ func _build_menu_detail() -> void:
 	start.add_theme_font_size_override("font_size", 20)
 	start.pressed.connect(_start_from_menu)
 	menu_detail.add_child(start)
+	_build_online_menu()
 
 func _start_from_menu() -> void:
 	var info := Scenarios.info(menu_scenario)
@@ -1935,18 +1999,293 @@ func _start_from_menu() -> void:
 		"nova_allied": menu_options.nova_allied, "length": int(menu_options.length)})
 	_start_game(st)
 
+# ================================================================ gioco online
+
+func _build_online_menu() -> void:
+	menu_detail.add_child(UITheme.caption("Gioca online", UITheme.ACCENT))
+	menu_detail.add_child(_rich("[color=#9aa7c2]Chi crea la stanza usa gli equipaggi qui sopra: il primo posto [b]UMANO[/b] è il suo, gli altri posti UMANO sono per gli amici (se restano vuoti li gioca l'IA). Gli amici scrivono il codice di 4 lettere e premono ENTRA.[/color]", 15))
+	var sess := net.load_session()
+	var row := HBoxContainer.new()
+	row.add_theme_constant_override("separation", 8)
+	menu_detail.add_child(row)
+	var name_edit := LineEdit.new()
+	name_edit.placeholder_text = "Il tuo nome"
+	name_edit.text = str(sess.get("name", ""))
+	name_edit.max_length = 24
+	name_edit.custom_minimum_size = Vector2(180, 40)
+	name_edit.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	row.add_child(name_edit)
+	var create := Button.new()
+	create.text = "CREA UNA STANZA"
+	create.custom_minimum_size = Vector2(190, 40)
+	row.add_child(create)
+	var row2 := HBoxContainer.new()
+	row2.add_theme_constant_override("separation", 8)
+	menu_detail.add_child(row2)
+	var code_edit := LineEdit.new()
+	code_edit.placeholder_text = "CODICE"
+	code_edit.max_length = 4
+	code_edit.custom_minimum_size = Vector2(120, 40)
+	code_edit.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	code_edit.text_changed.connect(func(tx):
+		var up: String = tx.to_upper()
+		if up != tx:
+			code_edit.text = up; code_edit.caret_column = up.length())
+	row2.add_child(code_edit)
+	var join := Button.new()
+	join.text = "ENTRA"
+	join.custom_minimum_size = Vector2(190, 40)
+	row2.add_child(join)
+	var status := UITheme.label("", 15, UITheme.WARN)
+	status.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	menu_detail.add_child(status)
+	var buttons := [create, join]
+	var nm := func() -> String:
+		var s: String = name_edit.text.strip_edges()
+		if s == "": status.text = "Scrivi il tuo nome."
+		else: net._save({"name": s})
+		return s
+	create.pressed.connect(func():
+		var me: String = nm.call()
+		if me == "": return
+		for b in buttons: b.disabled = true
+		status.text = "Creo la stanza…"
+		var err: String = await _online_create(me)
+		status.text = err
+		for b in buttons: b.disabled = false)
+	join.pressed.connect(func():
+		var me: String = nm.call()
+		if me == "": return
+		var c: String = code_edit.text.strip_edges().to_upper()
+		if c.length() != 4:
+			status.text = "Il codice della stanza è di 4 lettere."
+			return
+		for b in buttons: b.disabled = true
+		status.text = "Entro nella stanza %s…" % c
+		var err: String = await _online_join(c, me)
+		status.text = err
+		for b in buttons: b.disabled = false)
+	if str(sess.get("room", "")) != "":
+		var back := Button.new()
+		back.text = "RIENTRA NELLA STANZA %s" % sess.room
+		back.custom_minimum_size = Vector2(0, 40)
+		back.pressed.connect(func():
+			var me: String = nm.call()
+			if me == "": return
+			status.text = "Rientro nella stanza %s…" % sess.room
+			var err: String = await _online_join(str(sess.room), me)
+			if err != "": net.remember_room("")
+			status.text = err)
+		menu_detail.add_child(back)
+
+## Crea la stanza con la configurazione del menu. Restituisce "" o un messaggio d'errore.
+func _online_create(me: String) -> String:
+	var info := Scenarios.info(menu_scenario)
+	var open := []
+	var count := 0
+	for i in range(int(info.max)):
+		if menu_seats[i].type == "none": continue
+		count += 1
+		if menu_seats[i].type == "human": open.append(i)
+	if count < int(info.min): return "Servono almeno %d giocatori." % info.min
+	if open.is_empty(): return "Metti almeno un posto su UMANO: il primo è il tuo."
+	var c := await net.create_room(me, open)
+	if c == "": return "Non riesco a creare la stanza: %s" % net.last_error
+	net.remember_room(c, int(open[0]))
+	lobby = {"code": c, "seat": int(open[0]), "role": "host", "name": me,
+		"config": {"scenario": menu_scenario, "seats": menu_seats.duplicate(true), "options": menu_options.duplicate()}}
+	_show_lobby()
+	return ""
+
+## Entra (o rientra) in una stanza. Restituisce "" o un messaggio d'errore.
+func _online_join(c: String, me: String) -> String:
+	var s := await net.join_room(c, me)
+	if s == -1: return "La stanza %s è al completo." % c
+	if s < 0:
+		return "La stanza %s non esiste o la partita è già iniziata.%s" % [c, ("\n" + net.last_error) if net.last_error != "" else ""]
+	net.remember_room(c, s)
+	var room: Dictionary = net.last_room
+	var role := "host" if room.get("host", "") == net.uid else "guest"
+	lobby = {"code": c, "seat": s, "role": role, "name": me}
+	if room.get("status", "") in ["playing", "over"]:
+		if not await _online_enter(): return "Non riesco a leggere la partita: %s" % net.last_error
+		return ""
+	_show_lobby()
+	return ""
+
+func _show_lobby() -> void:
+	if lobby_box != null: lobby_box.queue_free()
+	lobby_box = _modal(560)
+	var card: VBoxContainer = lobby_box.get_meta("card")
+	card.add_child(UITheme.caption("Stanza online"))
+	card.add_child(UITheme.label(lobby.code, 54, UITheme.PHOSPHOR, UITheme.display))
+	var host: bool = lobby.role == "host"
+	card.add_child(_rich("Comunica il codice agli altri giocatori: lo scrivono nel menu e premono [b]ENTRA[/b]." if host else "Sei dentro. Aspetta che chi ha creato la stanza dia il via.", 16))
+	var seats_box := VBoxContainer.new()
+	seats_box.add_theme_constant_override("separation", 4)
+	card.add_child(seats_box)
+	var row := HBoxContainer.new()
+	row.add_theme_constant_override("separation", 10)
+	card.add_child(row)
+	if host:
+		var go := UITheme.primary_button("INIZIA ONLINE ▸")
+		go.custom_minimum_size = Vector2(240, 46)
+		go.pressed.connect(func(): go.disabled = true; _online_start())
+		row.add_child(go)
+	var leave := Button.new()
+	leave.text = "CHIUDI LA STANZA" if host else "ESCI"
+	leave.custom_minimum_size = Vector2(200, 46)
+	leave.pressed.connect(func():
+		if host: net.close_room(lobby.code)
+		net.remember_room("")
+		lobby = {}
+		if lobby_box != null: lobby_box.queue_free(); lobby_box = null)
+	row.add_child(leave)
+	add_child(lobby_box)
+	_lobby_poll(lobby_box, seats_box)
+
+## Aggiorna i posti della stanza ogni 2 secondi; chi non l'ha creata parte quando inizia la partita.
+func _lobby_poll(box: Control, seats_box: VBoxContainer) -> void:
+	while is_instance_valid(box) and box == lobby_box and not lobby.is_empty():
+		var r := await net.db_get(Net.ROOT + "/" + str(lobby.code))
+		if not is_instance_valid(box) or box != lobby_box: return
+		if r.code != 200:
+			_clear(seats_box)
+			seats_box.add_child(UITheme.label("Rete non raggiungibile, riprovo… (%s)" % net.last_error, 15, UITheme.WARN))
+			await get_tree().create_timer(3.0).timeout
+			continue
+		var room: Dictionary = r.data if r.data is Dictionary else {}
+		if room.is_empty():
+			_clear(seats_box)
+			seats_box.add_child(UITheme.label("La stanza è stata chiusa.", 16, UITheme.WARN))
+			net.remember_room("")
+			lobby = {}
+			return
+		_clear(seats_box)
+		var seats := Net._as_dict(room.get("seats", {}))
+		var info := Scenarios.info(lobby.config.scenario if lobby.has("config") else menu_scenario)
+		for i in room.get("open", []):
+			var k := str(int(i))
+			var side: String = info.sides[int(i)] if int(i) < info.sides.size() else "Giocatore"
+			var who: String = str(seats[k].name) if seats.has(k) else "posto libero (lo giocherà l'IA)"
+			seats_box.add_child(_rich("[color=%s]■[/color] [b]%s[/b] — %s" % [Scenarios.PLAYER_COLORS[int(i)], side.to_upper(), who], 16))
+		if lobby.role == "guest" and room.get("status", "") in ["playing", "over"]:
+			if await _online_enter(): return
+		await get_tree().create_timer(2.0).timeout
+
+func _online_start() -> void:
+	var cfg: Dictionary = lobby.config
+	var room := await net.room(lobby.code)
+	var joined := Net._as_dict(room.get("seats", {}))
+	var info := Scenarios.info(cfg.scenario)
+	var seats := []
+	var seat_idx := []
+	for i in range(int(info.max)):
+		var ms: Dictionary = cfg.seats[i]
+		if ms.type == "none": continue
+		var side_name: String = info.sides[i] if i < info.sides.size() else "Giocatore"
+		var nm: String = ms.name.strip_edges()
+		if nm == "": nm = ("Pilota %d" % (i + 1)) if side_name == "Pilota" else side_name
+		var typ: String = ms.type
+		if typ == "human":
+			if joined.has(str(i)): nm = str(joined[str(i)].name)
+			else: typ = "ai"
+		seats.append({"name": nm, "type": typ})
+		seat_idx.append(i if typ == "human" else -1)
+	var st := Scenarios.create(cfg.scenario, seats, {"sol_classic": cfg.options.sol_classic, "liner_terra": cfg.options.liner_terra,
+		"nova_allied": cfg.options.nova_allied, "length": int(cfg.options.length)})
+	for k in range(st.players.size()):
+		if seat_idx[k] >= 0: st.players[k].seat = seat_idx[k]
+	_make_online(lobby.code, int(lobby.seat), "host")
+	online.pid = Online.pid_of_seat(st, int(lobby.seat))
+	if not await net.start_room(lobby.code, {"scenario": cfg.scenario}):
+		_toast("Non riesco ad avviare la stanza: %s" % net.last_error, true)
+	await online.publish(st)
+	_close_lobby()
+	_start_game(st, true)
+
+## Legge l'ultima istantanea della stanza ed entra in partita.
+func _online_enter() -> bool:
+	_make_online(lobby.code, int(lobby.seat), lobby.role)
+	var pk := await online.catch_up()
+	if pk.is_empty():
+		_leave_online()
+		return false
+	online.pid = Online.pid_of_seat(pk.state, int(lobby.seat))
+	_close_lobby()
+	_start_game(pk.state, true)
+	if online.pid == "": _toast("Il tuo posto non è in questa partita: la guardi da spettatore.", true)
+	return true
+
+func _make_online(c: String, s: int, role: String) -> void:
+	if online != null: _leave_online()
+	online = Online.new()
+	online.setup(net, c, s, role)
+	online.status_changed.connect(func(tx): if tx != "": _toast(tx, true))
+	online.forced.connect(_on_forced)
+	add_child(online)
+	online.heartbeat_loop()
+
+func _close_lobby() -> void:
+	if lobby_box != null: lobby_box.queue_free(); lobby_box = null
+	lobby = {}
+
+func _leave_online() -> void:
+	if online == null: return
+	online.alive = false
+	online.queue_free()
+	online = null
+
+## Applica un'istantanea arrivata da un altro dispositivo: registro, animazioni, esito dei combattimenti.
+func _apply_packet(pk: Dictionary) -> void:
+	var old_log: int = state.log.size()
+	var old_combat = state.get("last_combat", {})
+	state = pk.state
+	board.set_state(state)
+	if Rules.ship(state, sel).is_empty(): sel = ""
+	mode = ""; attackers = []; targets = []
+	if state.log.size() < old_log:
+		log_text.clear()
+		old_log = 0
+	for i in range(old_log, state.log.size()): _append_log(state.log[i])
+	_refresh()
+	for batch in pk.get("moves", []):
+		if batch is Array and not batch.is_empty():
+			state.moves = batch
+			await _animate_moves(false)
+	var lc = state.get("last_combat", {})
+	if lc is Dictionary and not lc.is_empty() and JSON.stringify(lc) != JSON.stringify(old_combat): _show_combat_result()
+	Persistence.save_slot(state, "online")
+
+## L'host ha già giocato al posto di questo dispositivo (assente troppo a lungo).
+func _on_forced(pk: Dictionary) -> void:
+	if busy or online == null: return
+	if dialog != null: dialog.queue_free(); dialog = null
+	busy = true
+	var gen := _gen
+	await _apply_packet(pk)
+	if gen != _gen: return
+	busy = false
+	_toast("Eri via: l'IA ha giocato al tuo posto.", true)
+	_refresh()
+	_flow()
+
 # ================================================================ tastiera
 
 func _unhandled_input(event: InputEvent) -> void:
-	if state.is_empty() or menu.visible or busy: return
+	if state.is_empty() or menu.visible: return
+	if event is InputEventKey and event.pressed and not event.echo:
+		# comandi di visualizzazione: sempre disponibili, anche mentre decide un altro
+		match event.keycode:
+			KEY_F: board.fit(); return
+			KEY_R: trails_toggle.button_pressed = not trails_toggle.button_pressed; return
+			KEY_D: drift_toggle.button_pressed = not drift_toggle.button_pressed; return
+			KEY_V: detect_toggle.button_pressed = not detect_toggle.button_pressed; return
+	if busy: return
 	if event is InputEventKey and event.pressed and not event.echo:
 		match event.keycode:
 			KEY_ENTER, KEY_KP_ENTER: _on_primary()
 			KEY_TAB: _select_next()
-			KEY_F: board.fit()
-			KEY_R: trails_toggle.button_pressed = not trails_toggle.button_pressed
-			KEY_D: drift_toggle.button_pressed = not drift_toggle.button_pressed
-			KEY_V: detect_toggle.button_pressed = not detect_toggle.button_pressed
 			KEY_ESCAPE:
 				sel = ""; mode = ""; attackers = []; targets = []
 				_refresh()
