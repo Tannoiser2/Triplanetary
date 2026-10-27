@@ -113,7 +113,10 @@ static func nearest(list: Array, h: Vector2i) -> Dictionary:
 static func hunt(state: Dictionary, s: Dictionary, t: Dictionary, max_turns := 8) -> Dictionary:
 	if t.is_empty(): return {}
 	var plan := AI.search_intercept(state, s, t, 1, 1400 if max_turns <= 8 else 2600, 0 if s.infinite_fuel else 4)
-	if plan.is_empty() or plan.get("partial", false) or int(plan.turns) > max_turns: return {}
+	if plan.is_empty() or plan.burns.is_empty(): return {}
+	# per le cacce lunghe basta un piano parziale che avvicini; per quelle brevi serve il piano completo
+	if plan.get("partial", false) and max_turns <= 20: return {}
+	if int(plan.turns) > max_turns: return {}
 	return {"burns": plan.burns[0]}
 
 ## Rifornimento: in orbita sopra una base amica con carburante, o fermi in una base asteroidale.
@@ -197,7 +200,10 @@ static func _retribution(state: Dictionary, s: Dictionary) -> Dictionary:
 			if not rf.is_empty(): return rf
 		if s.landed != "" or s.vel == Vector2i.ZERO and s.pos == SolarMap.body(map, "clandestine").hex:
 			if s.landed != "": return {"takeoff": true}
-		var hh := hunt(state, s, nearest(enemies(state, s), s.pos))
+		var prey := nearest(enemies(state, s), s.pos)
+		var hh := hunt(state, s, prey)
+		# nessuna preda vicina: la flotta va a cercarla, anche lontano (altrimenti la partita si arena)
+		if hh.is_empty() and not prey.is_empty(): hh = hunt(state, s, prey, 40)
 		return hh if not hh.is_empty() else AI._drift_safe(state, s)
 	# Enforcers
 	var foes := enemies(state, s)
@@ -383,8 +389,73 @@ static func _prospect(state: Dictionary, s: Dictionary) -> Dictionary:
 	if stopped and ScenProspecting.ore_at(state, s.pos): return {}
 	return AI._drift_safe(state, s)
 
+## Carburante stimato per fermarsi e tornare a Ceres a bassa velocità.
+static func _home_cost(s: Dictionary, ceres: Vector2i) -> int:
+	var d := Hex.distance(s.pos, ceres)
+	if d == 0: return Hex.length(s.vel)
+	return Hex.length(s.vel) + 2 + d / 6
+
+## Frena verso la velocità zero senza uscire dalla plancia.
+static func _brake(state: Dictionary, s: Dictionary) -> Dictionary:
+	if s.vel == Vector2i.ZERO or int(s.fuel) <= 0: return AI._drift_safe(state, s)
+	var map := Rules.map_of(state)
+	var best := []
+	var best_v := 999
+	for d in range(6):
+		var r := Rules.simulate(map, s.pos, s.vel, s.grav, Hex.DIRS[d], false, state.asteroids, state.special, s.access_special)
+		if r.crash != "" or r.offmap or r.special: continue
+		var v = Hex.length(r.vel) * 10 + r.asteroids.size() * 3
+		if v < best_v: best_v = v; best = [d]
+	if best.is_empty(): return AI._drift_safe(state, s)
+	return {"burns": best}
+
+## Passeggiata di prospezione: a velocità 1 si entra in un esagono nuovo per turno e si prosegue
+## gratis in linea retta; ogni svolta di 60° costa 1 carburante. Ricerca in profondità su 8 turni
+## del percorso con più asteroidi inesplorati (da fermi si parte in una delle sei direzioni).
+static func _prospect_walk(state: Dictionary, s: Dictionary) -> Dictionary:
+	var map := Rules.map_of(state)
+	var near := false
+	for h in state.asteroids:
+		if Hex.distance(h, s.pos) <= 9 and not state.sd.prospected.has(ScenProspecting.key(h)): near = true; break
+	if not near: return {}
+	if Hex.length(s.vel) > 1 or not Rules.pending_sum(s) == Vector2i.ZERO: return {}
+	var best := {"score": 0.0, "first": null}
+	_walk(state, map, s.pos, s.vel, int(s.fuel), 0, [], {}, 0.0, best, s)
+	if best.first == null or float(best.score) < 0.9: return {}
+	return {"burns": best.first}
+
+static func _walk(state: Dictionary, map: Dictionary, pos: Vector2i, vel: Vector2i, fuel: int, depth: int, first, seen: Dictionary, score: float, best: Dictionary, s: Dictionary) -> void:
+	if score > float(best.score): best.score = score; best.first = first
+	if depth == 8: return
+	var options: Array = []
+	if vel == Vector2i.ZERO:
+		if fuel > 1:
+			for d in range(6): options.append([d])
+	else:
+		options.append([])
+		if fuel > 2:
+			for d in range(6):
+				var nv: Vector2i = vel + Hex.DIRS[d]
+				if Hex.length(nv) == 1: options.append([d])
+	for burns in options:
+		var nv2: Vector2i = vel + Rules.burn_vector(burns)
+		var dest: Vector2i = pos + nv2
+		if not map.cells.has(dest) or state.special.has(dest) or map.gravity.has(dest): continue
+		var sc = score - 0.45 * burns.size()
+		var seen2 := seen
+		if state.asteroids.has(dest) and not state.sd.prospected.has(ScenProspecting.key(dest)) and not seen.has(dest):
+			seen2 = seen.duplicate()
+			seen2[dest] = true
+			sc += pow(0.92, depth)
+		# una scheggia CT può disabilitare la nave per 4 turni: meglio non puntare verso il bordo
+		if not map.cells.has(dest + nv2 * 5): sc -= 0.3
+		_walk(state, map, dest, nv2, fuel - burns.size(), depth + 1, burns if depth == 0 else first, seen2, sc, best, s)
+
 static func _goto_stop(state: Dictionary, s: Dictionary, h: Vector2i) -> Dictionary:
-	var plan := AI._cached_or_plan(state, s, "stop:%d,%d" % [h.x, h.y], func(): return AI.search_stop(state, s, h, 1800))
+	var budget := 4000 if state.scenario == "prospecting" else 1800
+	var plan := AI._cached_or_plan(state, s, "stop:%d,%d" % [h.x, h.y], func(): return AI.search_stop(state, s, h, budget))
+	# con poco carburante un piano incompleto è un rischio: meglio fermarsi e ripianificare da fermi
+	if plan.get("partial", false) and not s.infinite_fuel and int(s.fuel) <= 5 and s.vel != Vector2i.ZERO: return _brake(state, s)
 	return AI._follow(state, s, plan)
 
 static func _known_ore(state: Dictionary, s: Dictionary, free_only: bool) -> Array:

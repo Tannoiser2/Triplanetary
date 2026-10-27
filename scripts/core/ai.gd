@@ -56,7 +56,7 @@ static func plan_astrogation(state: Dictionary) -> void:
 	if not state.has("ai"): state.ai = {}
 	for s in state.ships:
 		if s.owner != me or not Rules.alive(s) or s.get("dummy", false) or s.get("is_base", false): continue
-		var plot := _decide(state, s)
+		var plot := _safety(state, s, _decide(state, s))
 		if OS.has_feature("debug_ai") or state.get("ai_trace", false):
 			var memo: Dictionary = state.ai.get(s.id, {})
 			var tr: Array = memo.get("trace", [])
@@ -67,6 +67,29 @@ static func plan_astrogation(state: Dictionary) -> void:
 		if plot.is_empty(): continue
 		if Rules.set_plot(state, s.id, plot) != "":
 			Rules.set_plot(state, s.id, {"burns": []})
+
+## Rete di sicurezza: una rotta che porta a schiantarsi, a uscire dalla plancia (quando non è l'obiettivo)
+## o in una situazione senza scampo viene sostituita dalla migliore deriva sicura.
+static func _safety(state: Dictionary, s: Dictionary, plot: Dictionary) -> Dictionary:
+	if s.landed != "" or Rules.is_disabled(state, s): return plot
+	if plot.get("takeoff", false) or int(plot.get("land", -1)) >= 0: return plot
+	if _plot_ok(state, s, plot.get("burns", [])): return plot
+	var alt := _drift_safe(state, s)
+	if _plot_ok(state, s, alt.get("burns", [])):
+		var out := plot.duplicate()
+		out.burns = alt.burns
+		return out
+	return plot
+
+static func _plot_ok(state: Dictionary, s: Dictionary, burns: Array) -> bool:
+	if not s.infinite_fuel and burns.size() > int(s.fuel): return false
+	var map := Rules.map_of(state)
+	var r := Rules.simulate(map, s.pos, s.vel, s.grav, Rules.burn_vector(burns), false, state.asteroids, state.special, s.access_special)
+	if r.crash != "" or r.special: return false
+	if r.offmap: return state.scenario == "escape" and s.owner == "P1"
+	var g := Vector2i.ZERO
+	for a in r.grav: g += a
+	return _survivable(map, state, s, {"pos": r.dest, "vel": r.vel, "g": g, "fuel": int(s.fuel) - burns.size()})
 
 static func _decide(state: Dictionary, s: Dictionary) -> Dictionary:
 	if not state.has("ai"): state.ai = {}
@@ -146,10 +169,8 @@ static func _gt_plan(state: Dictionary, s: Dictionary, goal: String) -> Dictiona
 static func _escape(state: Dictionary, s: Dictionary) -> Dictionary:
 	if s.owner == "P1":
 		if s.landed != "":
-			# i trasporti partono scaglionati per confondere l'inseguitore
-			var idx := ["pilgrim-a", "pilgrim-b", "pilgrim-c"].find(s.id)
-			if int(state.turn) >= 1 + maxi(0, idx): return {"takeoff": true}
-			return {}
+			# i trasporti partono tutti insieme: l'inseguitore non può colpirli tutti e non sa quale scegliere
+			return {"takeoff": true}
 		var plan := _cached_or_plan(state, s, "exit", func(): return search_exit(state, s, 3000))
 		if plan.is_empty(): return _drift_safe(state, s)
 		return _follow(state, s, plan)
@@ -277,6 +298,7 @@ static func _drift_safe(state: Dictionary, s: Dictionary) -> Dictionary:
 		for d in range(6): options.append([d])
 	var best: Array = []
 	var best_score := INF
+	var hz := hazards(state, s)
 	for burns in options:
 		var r := Rules.simulate(map, s.pos, s.vel, s.grav, Rules.burn_vector(burns), false, state.asteroids, state.special, s.access_special)
 		if r.crash != "" or r.offmap or r.special: continue
@@ -284,7 +306,7 @@ static func _drift_safe(state: Dictionary, s: Dictionary) -> Dictionary:
 		for a in r.grav: g += a
 		var node := {"pos": r.dest, "vel": r.vel, "g": g, "fuel": int(s.fuel) - burns.size()}
 		var frugal := 0.4 if (s.infinite_fuel or int(s.fuel) > 4) else 3.0
-		var score: float = float(Hex.length(r.vel)) + frugal * burns.size() + 3.0 * r.asteroids.size()
+		var score: float = float(Hex.length(r.vel)) + frugal * burns.size() + 3.0 * r.asteroids.size() + hazard_cost(hz, r.path, r.dest, 1)
 		if not _survivable(map, state, s, node): score += 100.0
 		if not _can_stop_on_map(map, r.dest, r.vel + g): score += 20.0
 		if score < best_score: best_score = score; best = burns
@@ -305,6 +327,7 @@ static func _search(state: Dictionary, s: Dictionary, goal: Callable, heuristic:
 	var infinite: bool = s.infinite_fuel
 	var speed_cap := maxi(MAX_SPEED, Hex.length(s.vel + Rules.pending_sum(s)) + 1)
 	var burn_w := 0.6 if state.scenario == "prospecting" else 0.04
+	var hz := hazards(state, s)
 	var expansions := 0
 	while not heap.is_empty() and expansions < budget:
 		var top: Array = _pop(heap)
@@ -328,6 +351,7 @@ static func _search(state: Dictionary, s: Dictionary, goal: Callable, heuristic:
 						if ga.body == gb.body: child.orbit = ga.body
 			var hazard := 0.0
 			if not r.asteroids.is_empty(): hazard = 4.0 * r.asteroids.size()
+			if int(child.turns) <= 2 and not hz.is_empty(): hazard += hazard_cost(hz, r.path, r.dest, int(child.turns))
 			child.cost = float(node.cost) + 1.0 + burn_w * burns.size() + hazard
 			if Hex.length(r.vel) > speed_cap: continue
 			if goal.call(child, r) and (r.offmap or _survivable(map, state, s, child)):
@@ -348,6 +372,37 @@ static func _search(state: Dictionary, s: Dictionary, goal: Callable, heuristic:
 		partial.partial = true
 		return partial
 	return {}
+
+## Pericoli noti per la nave s nei prossimi due turni:
+## - "cross": mine ferme adesso (attraversarle durante il nostro movimento le fa esplodere);
+## - "end": dove passeranno gli ordigni nel loro prossimo movimento (anche i nostri: si muovono dopo le navi);
+## - "flak": esagoni battuti dalle difese planetarie nemiche, pericolosi per chi ci termina il turno.
+static func hazards(state: Dictionary, s: Dictionary) -> Dictionary:
+	var map := Rules.map_of(state)
+	var cross := {}
+	var end := {}
+	var flak := {}
+	for o in state.ordnance:
+		if o.kind == "mine": cross[o.pos] = float(cross.get(o.pos, 0.0)) + 7.0
+		var r := Rules.simulate(map, o.pos, o.vel, o.grav, o.get("launch_burn", Vector2i.ZERO), false, [], [], true)
+		var w := 60.0 if o.kind == "nuke" else 6.0
+		for i in range(1, r.path.size()):
+			end[r.path[i]] = float(end.get(r.path[i], 0.0)) + w
+	for b in state.bases:
+		if not b.active or not b.get("defense", false) or int(b.side) < 0: continue
+		if b.owner == s.owner or b.get("friends", []).has(s.owner): continue
+		var h: Vector2i = SolarMap.body(map, b.body).hex + Hex.DIRS[int(b.side)]
+		flak[h] = 5.0
+	if cross.is_empty() and end.is_empty() and flak.is_empty(): return {}
+	return {"cross": cross, "end": end, "flak": flak}
+
+static func hazard_cost(hz: Dictionary, path: Array, dest: Vector2i, turn: int) -> float:
+	if hz.is_empty(): return 0.0
+	var c := float(hz.flak.get(dest, 0.0))
+	if turn == 1:
+		for i in range(1, path.size()): c += float(hz.cross.get(path[i], 0.0))
+		c += float(hz.end.get(dest, 0.0))
+	return c
 
 ## Frenando di un esagono per turno, la nave si fermerebbe ancora sulla plancia?
 static func _can_stop_on_map(map: Dictionary, pos: Vector2i, vel: Vector2i) -> bool:
@@ -388,9 +443,12 @@ static func _extract(nodes: Array, idx: int) -> Dictionary:
 		i = int(n.parent)
 	return {"burns": burns, "expect": expect, "turns": burns.size()}
 
+## Chiave dello stato. Il carburante residuo conta (fino a 7): con il serbatoio quasi vuoto un nodo
+## raggiunto prima ma con meno carburante non deve oscurarne uno più lento e più parsimonioso.
 static func _key(n: Dictionary) -> int:
 	var p: Vector2i = n.pos; var v: Vector2i = n.vel; var g: Vector2i = n.g
-	return (((((p.x + 64) * 256 + (p.y + 64)) * 32 + (v.x + 16)) * 32 + (v.y + 16)) * 32 + (g.x + 16)) * 32 + (g.y + 16)
+	var k := (((((p.x + 64) * 256 + (p.y + 64)) * 32 + (v.x + 16)) * 32 + (v.y + 16)) * 32 + (g.x + 16)) * 32 + (g.y + 16)
+	return k * 8 + clampi(int(n.fuel), 0, 7)
 
 static func _push(heap: Array, item: Array) -> void:
 	heap.append(item)
@@ -558,6 +616,7 @@ static func search_intercept(state: Dictionary, s: Dictionary, t: Dictionary, mo
 
 static func plan_ordnance(state: Dictionary) -> void:
 	AIX.ordnance(state)
+	plan_mines(state)
 	var me := Rules.current_player(state)
 	for s in state.ships:
 		if s.owner != me or not Rules.alive(s) or s.get("dummy", false): continue
@@ -575,6 +634,36 @@ static func plan_ordnance(state: Dictionary) -> void:
 					var r := Rules.simulate(map, s.pos, s.vel, s.grav, Rules.burn_vector(burns), false, [], [], true)
 					if r.path.has(t.pos) or r.dest == t_next.dest:
 						if Rules.launch(state, s.id, "torpedo", burns) == "": return
+
+## Mine: la mina parte dall'esagono della nave con la sua velocità (la nave deve cambiare rotta).
+## Si lancia se la mina, nel suo moto, entra nell'esagono di un nemico, o se un nemico che prosegue
+## per inerzia attraverserà il punto in cui la mina si fermerà; mai se minaccia una nave amica.
+static func plan_mines(state: Dictionary) -> void:
+	var me := Rules.current_player(state)
+	var map := Rules.map_of(state)
+	var foes: Array = state.ships.filter(func(x): return x.owner != me and Rules.alive(x) and x.landed == "" and not x.get("dummy", false) and Rules.is_known(state, me, x) and AIX.target_ok(state, me, x))
+	if foes.is_empty(): return
+	for s in state.ships:
+		if s.owner != me or not Rules.alive(s) or int(s.inv.get("mine", 0)) <= 0: continue
+		if Rules.can_launch(state, s, "mine") != "": continue
+		var m := Rules.simulate(map, s.pos, s.vel, s.grav, Vector2i.ZERO, false, [], [], true)
+		if m.crash != "" or m.offmap: continue
+		var crossed: Array = m.path.slice(1)
+		# sicurezza: nessuna nave amica deve finire sul percorso della mina o nel suo esagono finale
+		var safe := true
+		for x in state.ships:
+			if x.owner != me or not Rules.alive(x) or x.landed != "": continue
+			var px := Rules.predict(state, x, state.plots.get(x.id, {}))
+			if crossed.has(px.dest) or px.dest == m.dest: safe = false; break
+			var nx := Rules.simulate(map, px.dest, px.vel, px.grav, Vector2i.ZERO, false, [], [], true)
+			if nx.path.slice(1).has(m.dest): safe = false; break
+		if not safe: continue
+		var hit := false
+		for f in foes:
+			if crossed.has(f.pos): hit = true; break
+			var pf := Rules.simulate(map, f.pos, f.vel, f.grav, Vector2i.ZERO, false, [], [], true)
+			if pf.path.slice(1).has(m.dest): hit = true; break
+		if hit: Rules.launch(state, s.id, "mine")
 
 ## Dichiara un attacco favorevole, se possibile di gruppo.
 ## Restituisce true se un attacco è stato avviato o risolto.
@@ -603,19 +692,38 @@ static func plan_combat(state: Dictionary) -> bool:
 			var p := Rules.attack_preview(state, g, [t])
 			if int(p.column) < 0: continue
 			var hit := _chance(p)
+			var ev := _damage_value(state, p, t)
 			var risk := 0.0
 			if not t.commercial:
 				var back := Rules.attack_preview(state, [t], g)
-				if int(back.column) >= 0: risk = _chance(back)
-			var score = hit - risk_weight * risk + (0.0 if state.scenario == "grand-tour" else 0.3) - 0.05 * g.size()
+				if int(back.column) >= 0:
+					var worst := 0.0
+					for a in g: worst = maxf(worst, _damage_value(state, back, a))
+					risk = worst
+			var tv := 1.0 + float(t.combat) / 10.0
+			var score = ev * tv - risk_weight * risk + (0.0 if state.scenario == "grand-tour" else 0.25) - 0.03 * g.size()
 			if t.get("passengers", false): score = hit - 0.2 * risk
-			if hit >= 0.3 and score > best_score:
+			if hit >= 0.25 and score > best_score:
 				best_score = score
 				best = {"a": g.map(func(x): return x.id), "t": t.id}
 	if best.is_empty(): return false
 	if Rules.declare_attack(state, best.a, [best.t]) != "": return false
 	if Rules.player(state, state.pending_attack.defender).type == "ai": respond_counter(state)
 	return true
+
+## Valore atteso di un attacco: l'eliminazione vale 1; una disabilitazione vale di più se, sommata
+## ai danni già subiti, distrugge la nave (6 turni cumulativi).
+static func _damage_value(state: Dictionary, p: Dictionary, t: Dictionary) -> float:
+	var cur := Rules.disabled_turns(state, t)
+	var v := 0.0
+	for res in p.chances:
+		if res == "-": continue
+		var c := float(p.chances[res]) / 6.0
+		if res == "E": v += c
+		else:
+			var k := int(str(res).substr(1))
+			v += c * (1.0 if cur + k >= 6 else 0.3 + 0.08 * k)
+	return v
 
 static func _chance(p: Dictionary) -> float:
 	var hit := 0.0

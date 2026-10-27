@@ -8,7 +8,7 @@ Aggiornato al 26 ottobre 2026 — riscrittura completa e tutti gli otto scenari 
 - Tutte le regole di movimento, combattimento, ordigni, pericoli, basi, rifornimento, rilevamento, trasferimenti e resa del manuale.
 - Tutti gli otto scenari del manuale, con preparazione, regole speciali e condizioni di vittoria complete.
 - Sistemi comuni: acquisto di flotte a punti di forza o in MegaCrediti, schieramento su basi, orbite o spazio libero, basi orbitali, cattura delle basi, soppressione e devastazione dei lati planetari, economia e depositi di ordigni.
-- IA per tutti gli scenari e per tutte le parti.
+- IA per tutti gli scenari e per tutte le parti. Le rotte evitano mine, traiettorie degli ordigni e difese planetarie nemiche; una rete di sicurezza scarta le rotte che portano a schiantarsi o a uscire dalla plancia; la ricerca tiene conto del carburante residuo (niente più navi a secco a metà strada); le mine si lanciano sulle rotte nemiche; il fuoco sceglie i bersagli per valore atteso (danni cumulativi, eliminazione).
 - Hot-seat, schermata di passaggio, salvataggi, export Web.
 - Gioco online su Firebase (stanze con codice, posti IA giocati da chi crea la stanza, rientro, subentro dell'IA per gli assenti).
 - Interruttori di visualizzazione ROTTE, DERIVA e RADAR (tasti R, D, V), ricordati fra una sessione e l'altra.
@@ -32,4 +32,5 @@ Aggiornato al 26 ottobre 2026 — riscrittura completa e tutti gli otto scenari 
 ## Da fare
 
 - Variante "rotta obbligata" del Grand Tour e variante a pedine coperte di The Fleet Mutiny.
-- IA: il Prospecting automatico è prudente ma non ottimizza il commercio.
+- IA: il Prospecting automatico dipende molto dalla fortuna nella prospezione e non ottimizza il commercio (vende solo a Ceres).
+- IA: una nave disabilitata ad alta velocità può ancora finire fuori plancia (non può manovrare).
