@@ -518,6 +518,103 @@ static func end_of_turn(state: Dictionary) -> void:
 			var names := " e ".join(winners.map(func(x): return Rules.player(state, x.owner).name))
 			_finish(state, winners[0].owner if winners.size() == 1 else "pari", "%s %s il Grand Tour in %d giorni consumando %d carburante." % [names, "vince" if winners.size() == 1 else "vincono ex aequo", state.turn, best])
 
+# ---------------------------------------------------------------- stallo e fine anticipata
+
+const CALM_LIMIT := 20       # giorni senza progressi prima che la partita venga aggiudicata
+
+## Fine giornata: se per molti giorni non succede nulla (nessuna spinta, nessun combattimento, nessun
+## progresso dello scenario, navi ferme o in orbita) la partita si chiude e viene aggiudicata.
+static func check_stalemate(state: Dictionary) -> void:
+	if state.over or state.scenario == "prospecting": return
+	var sig := _progress_signature(state)
+	var fast := false
+	for s in state.ships:
+		if Rules.alive(s) and s.landed == "" and Hex.length(s.vel) >= 2 and not Rules.is_disabled(state, s): fast = true
+	for o in state.ordnance: fast = true
+	if fast or sig != str(state.get("calm_sig", "")):
+		state.calm_sig = sig
+		state.calm_turns = 0
+		return
+	state.calm_turns = int(state.get("calm_turns", 0)) + 1
+	if int(state.calm_turns) == CALM_LIMIT - 5:
+		Rules.log_event(state, "Nessun progresso da %d giorni: se nulla cambia, fra 5 giorni la partita sarà aggiudicata." % state.calm_turns, "info")
+	if int(state.calm_turns) >= CALM_LIMIT:
+		adjudicate(state, "Stallo: %d giorni senza progressi." % CALM_LIMIT)
+
+static func _progress_signature(state: Dictionary) -> String:
+	var fuel := 0
+	var alive := 0
+	var landed := 0
+	var visits := 0
+	for s in state.ships:
+		fuel += int(s.fuel_spent)
+		if Rules.alive(s):
+			alive += 1
+			if s.landed != "": landed += 1
+			visits += s.visited.size() + int(s.get("route_idx", 0))
+	var fights := 0
+	for e in state.log:
+		if e.get("kind", "") in ["combat", "loss", "ordnance", "victory"]: fights += 1
+	return "%d|%d|%d|%d|%d|%d|%d" % [fuel, alive, landed, visits, fights, state.devastated.size(), state.sd.get("suppressed", []).size()]
+
+## Chiude la partita adesso e assegna la vittoria secondo lo stato raggiunto.
+static func adjudicate(state: Dictionary, why: String) -> void:
+	if state.over: return
+	var pname := func(pid: String) -> String: return Rules.player(state, pid).name
+	match state.scenario:
+		"grand-tour":
+			var best := -1
+			var cands: Array = []
+			for s in state.ships:
+				if not Rules.alive(s): continue
+				var done = state.sd.required.size() - gt_missing(state, s).size()
+				if done > best: best = done; cands = [s]
+				elif done == best: cands.append(s)
+			if cands.is_empty():
+				_finish(state, "", "%s Nessuna corvetta in gara." % why); return
+			cands.sort_custom(func(a, b): return int(a.fuel_spent) < int(b.fuel_spent))
+			var w: Array = cands.filter(func(x): return int(x.fuel_spent) == int(cands[0].fuel_spent))
+			var names := " e ".join(w.map(func(x): return pname.call(x.owner)))
+			_finish(state, w[0].owner if w.size() == 1 else "pari", "%s Vince ai punti chi ha toccato più corpi (%d di %d): %s." % [why, best, state.sd.required.size(), names])
+			return
+		"escape":
+			_finish(state, "P2", "%s I fuggitivi non sono usciti oltre Giove: vittoria marginale degli Enforcers (%s)." % [why, pname.call("P2")]); return
+		"lateral-7":
+			var holder := Rules.ship(state, state.sd.passengers)
+			if not holder.is_empty() and holder.owner == "P1":
+				_finish(state, "P1", "%s I passeggeri restano in mano ai Pirati (%s)." % [why, pname.call("P1")])
+			else:
+				_finish(state, "P2", "%s La nave di linea non è stata catturata: vittoria della Marina (%s)." % [why, pname.call("P2")])
+			return
+		"nova":
+			var k1 := 0; var k2 := 0
+			for s in state.ships:
+				if s.owner != "P3" or Rules.alive(s): continue
+				if s.get("killed_by", "") == "P1": k1 += 1
+				elif s.get("killed_by", "") == "P2": k2 += 1
+			if k1 == k2: _finish(state, "pari", "%s Gli alieni non hanno attivato la bomba: i due blocchi pari (%d alieni abbattuti a testa)." % [why, k1])
+			else:
+				var w2 := "P1" if k1 > k2 else "P2"
+				_finish(state, w2, "%s Gli alieni non hanno attivato la bomba: vince %s, che ne ha abbattuti di più." % [why, pname.call(w2)])
+			return
+		"fleet-mutiny":
+			var n := int(state.sd.get("suppressed", []).size())
+			if n >= 4: _finish(state, "P2", "%s %d lati della Terra soppressi: vittoria dell'ammutinamento." % [why, n])
+			else: _finish(state, "P1", "%s Solo %d lati della Terra soppressi: vittoria dell'Impero." % [why, n])
+			return
+	# negli altri scenari: più forza da combattimento ancora in gioco
+	var power := {}
+	for p in state.players: power[p.id] = 0
+	for s in state.ships:
+		if Rules.alive(s) and not s.get("dummy", false): power[s.owner] = int(power.get(s.owner, 0)) + int(s.combat)
+	var top := -1
+	var ws: Array = []
+	for pid in power:
+		if int(power[pid]) > top: top = int(power[pid]); ws = [pid]
+		elif int(power[pid]) == top: ws.append(pid)
+	if ws.size() == 1: _finish(state, ws[0], "%s Vince ai punti %s, con più forza ancora in gioco (%d)." % [why, pname.call(ws[0]), top])
+	else: _finish(state, "pari", "%s Forze equivalenti: partita pari." % why)
+
 static func _finish(state: Dictionary, winner: String, text: String) -> void:
 	if state.over: return
 	state.over = true

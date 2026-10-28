@@ -160,8 +160,11 @@ static func hold_orbit(state: Dictionary, s: Dictionary, body: String) -> Dictio
 	var plan := AI._cached_or_plan(state, s, "orbit:" + body, func(): return AI.search_orbit(state, s, body, 0, 1500))
 	return AI._follow(state, s, plan)
 
+## Soglia di riserva proporzionale al serbatoio (sulla mappa completa i serbatoi sono doppi).
 static func low_fuel(s: Dictionary, limit := 6) -> bool:
-	return not s.infinite_fuel and int(s.fuel) <= limit
+	if s.infinite_fuel: return false
+	var scale := maxf(1.0, float(s.max_fuel) / 20.0)
+	return int(s.fuel) <= int(round(limit * scale))
 
 static func clear_refuel(state: Dictionary, s: Dictionary) -> void:
 	if state.ai.has(s.id) and not low_fuel(s, 8): state.ai[s.id].erase("refuel_goal")

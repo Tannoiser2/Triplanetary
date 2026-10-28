@@ -111,6 +111,9 @@ static func _grand_tour(state: Dictionary, s: Dictionary) -> Dictionary:
 	var orbiting := Rules.orbit_body(state, s)
 	var fuel_bodies := ["terra", "venus", "mars", "callisto"]
 	var fuel: int = 99 if s.infinite_fuel else int(s.fuel)
+	# soglie pensate per 20 punti di carburante: si riportano alla scala del serbatoio
+	var fscale := maxf(1.0, float(s.max_fuel) / 20.0)
+	if not s.infinite_fuel: fuel = int(round(float(fuel) / fscale))
 	if missing.is_empty() and orbiting == "terra":
 		var sides := Rules.landing_sides(state, s)
 		if not sides.is_empty() and fuel >= 1: return {"land": sides[0]}

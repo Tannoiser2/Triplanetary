@@ -34,6 +34,7 @@ func _init() -> void:
 	test_xmap()
 	test_xmap_full()
 	test_replay()
+	test_stalemate()
 	if failures == 0: print("OK: %d controlli" % count)
 	else: printerr("%d/%d controlli falliti" % [failures, count])
 	quit(1 if failures else 0)
@@ -372,3 +373,21 @@ func test_replay() -> void:
 	check(a != null and a.distance_to(tr.pts[2]) < 0.01, "la curva passa per le posizioni di fine turno")
 	var back := Persistence.from_json(Persistence.to_json(st))
 	check(back.replay.size() == st.replay.size(), "il replay si salva con la partita")
+
+func test_stalemate() -> void:
+	# due giocatori che non fanno nulla: dopo 20 giorni senza progressi la partita viene aggiudicata
+	var st := Scenarios.create("grand-tour", [{"name": "A", "type": "human"}, {"name": "B", "type": "human"}], {"seed": 2})
+	var g := 0
+	while not st.over and g < 1000:
+		Rules.end_phase(st); g += 1
+	check(st.over and st.result.begins_with("Stallo") and int(st.turn) <= 25, "stallo aggiudicato (giorno %d): %s" % [st.turn, st.result])
+	for id in ["escape", "lateral-7", "nova", "retribution", "fleet-mutiny", "interplanetary-war"]:
+		var n := 3 if id == "nova" else 2
+		var seats := []
+		for i in n: seats.append({"name": "IA%d" % i, "type": "ai"})
+		var s2 := Scenarios.create(id, seats, {"seed": 5})
+		var k := 0
+		while s2.phase == "setup" and k < 300:
+			AI.play_step(s2); k += 1
+		Scenarios.adjudicate(s2, "Fine anticipata.")
+		check(s2.over and s2.result != "", "%s: fine anticipata aggiudicata (%s)" % [id, s2.winner])

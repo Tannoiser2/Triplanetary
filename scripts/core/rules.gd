@@ -339,6 +339,8 @@ static func _next_segment(state: Dictionary) -> void:
 			state.seg = 0
 			Scenarios.end_of_turn(state)
 			if state.over: return
+			Scenarios.check_stalemate(state)
+			if state.over: return
 			state.turn = int(state.turn) + 1
 			Planets.advance(state)
 		if _player_active(state, current_player(state)):

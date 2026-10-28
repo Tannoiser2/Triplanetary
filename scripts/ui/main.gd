@@ -174,6 +174,12 @@ func _build_hud() -> void:
 	player_label = UITheme.label("", 17, UITheme.TEXT, UITheme.body_bold)
 	chip_row.add_child(player_label)
 	row.add_child(player_chip)
+	var finish := _icon_button("FINE", "Termina la partita, aggiudica la vittoria e passa alla schermata finale con il replay")
+	finish.pressed.connect(func():
+		if state.is_empty(): return
+		if state.over: _show_victory()
+		else: _confirm_end())
+	row.add_child(finish)
 	var guide := _icon_button("GUIDA", "Regole e comandi")
 	guide.pressed.connect(func(): help.visible = true)
 	row.add_child(guide)
@@ -1759,6 +1765,8 @@ func _open_game_menu() -> void:
 	]
 	if state.over and not state.get("replay", []).is_empty():
 		items.append(["REPLAY DELLA PARTITA", func(): close.call(); _start_replay()])
+	if not state.over:
+		items.append(["TERMINA LA PARTITA E AGGIUDICA", func(): close.call(); _confirm_end()])
 	if online != null:
 		items.append(["COPIA IL SALVATAGGIO NEGLI APPUNTI", func():
 			DisplayServer.clipboard_set(Persistence.to_json(state)); _toast("Salvataggio copiato"); close.call()])
@@ -1836,6 +1844,9 @@ In Nova, Retribution, The Fleet Mutiny, Interplanetary War e Prospecting la part
 
 [b][color=#ff9a5c]Mappa ampliata[/color][/b]
 In ogni scenario si può scegliere la mappa ampliata di Mike Rowles (interna fino a Giove o completa fino a Plutone): i pianeti girano attorno al Sole in senso antiorario (il cerchio colorato è l'orbita, la freccia indica il prossimo esagono). Le navi a terra o nei campi di gravità di un pianeta si spostano con lui. L'anello interno del Sole ha gravità tripla, quello di Giove doppia: avvicinarsi al Sole richiede molta prudenza.
+
+[b][color=#ff9a5c]Fine della partita[/color][/b]
+Se per 20 giorni non succede nulla (nessuna spinta, nessun combattimento, nessun progresso, navi ferme o in orbita) la partita si chiude da sola e viene aggiudicata; dopo 15 giorni il registro avvisa. Il pulsante FINE in alto la chiude subito: vince chi ha raggiunto più tappe, soppresso più lati, abbattuto più alieni o, negli altri scenari, chi ha più forza ancora in gioco. Poi si passa alla schermata finale con il REPLAY.
 
 [b][color=#ff9a5c]Visualizzazione e replay[/color][/b]
 Con ROTTE e DERIVA spenti la plancia si fa pulita: ogni nave punta nella direzione della spinta scelta per il turno e mostra lo sbuffo dei motori. A fine partita il pulsante REPLAY (anche dal MENU) fa rivedere tutta la partita: le navi si muovono insieme su traiettorie continue, senza pause fra i turni, con velocità da ½× a 4× e una barra per saltare a qualunque giorno.
@@ -2065,6 +2076,35 @@ func _start_from_menu() -> void:
 		return
 	var st := Scenarios.create(menu_scenario, seats, _scenario_options(menu_options))
 	_start_game(st)
+
+## Fine anticipata: chiede conferma, aggiudica la vittoria e passa alla schermata finale (con il replay).
+func _confirm_end() -> void:
+	if online != null and busy:
+		_toast("Online si può terminare solo durante il proprio turno.", true)
+		return
+	if dialog != null: dialog.queue_free()
+	dialog = _modal(520)
+	var card: VBoxContainer = dialog.get_meta("card")
+	card.add_child(UITheme.label("TERMINARE LA PARTITA?", 26, UITheme.ACCENT, UITheme.display))
+	card.add_child(_rich("La vittoria viene assegnata in base allo stato attuale (tappe raggiunte, lati soppressi, alieni abbattuti o forza ancora in gioco). Poi potrai rivedere tutto con il replay.", 16))
+	var row := HBoxContainer.new()
+	row.add_theme_constant_override("separation", 10)
+	card.add_child(row)
+	var yes := UITheme.primary_button("TERMINA")
+	yes.custom_minimum_size = Vector2(180, 46)
+	yes.pressed.connect(func():
+		dialog.queue_free(); dialog = null
+		var n: int = state.log.size()
+		Scenarios.adjudicate(state, "Partita terminata dai giocatori.")
+		_after_step(n)
+		_refresh()
+		if online != null: _flow()
+		else: _show_victory())
+	row.add_child(yes)
+	var no := Button.new(); no.text = "ANNULLA"; no.custom_minimum_size = Vector2(160, 46)
+	no.pressed.connect(func(): dialog.queue_free(); dialog = null)
+	row.add_child(no)
+	add_child(dialog)
 
 # ================================================================ replay di fine partita
 
