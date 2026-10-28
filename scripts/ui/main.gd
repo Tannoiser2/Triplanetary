@@ -1849,7 +1849,7 @@ In ogni scenario si può scegliere la mappa ampliata di Mike Rowles (interna fin
 Se per 20 giorni non succede nulla (nessuna spinta, nessun combattimento, nessun progresso, navi ferme o in orbita) la partita si chiude da sola e viene aggiudicata; dopo 15 giorni il registro avvisa. Il pulsante FINE in alto la chiude subito: vince chi ha raggiunto più tappe, soppresso più lati, abbattuto più alieni o, negli altri scenari, chi ha più forza ancora in gioco. Poi si passa alla schermata finale con il REPLAY.
 
 [b][color=#ff9a5c]Visualizzazione e replay[/color][/b]
-Con ROTTE e DERIVA spenti la plancia si fa pulita: ogni nave punta nella direzione della spinta scelta per il turno e mostra lo sbuffo dei motori. A fine partita il pulsante REPLAY (anche dal MENU) fa rivedere tutta la partita: le navi si muovono insieme su traiettorie continue, senza pause fra i turni, con velocità da ½× a 4× e una barra per saltare a qualunque giorno.
+Con ROTTE e DERIVA spenti la plancia si fa pulita: ogni nave mostra la fiamma della spinta scelta per il turno. Con PRUA SULLA ROTTA (nella barra del replay, attivo di norma) la nave punta sempre lungo la sua rotta e la fiamma esce da uno dei sei lati, quello opposto alla spinta; spento, la nave ruota verso la spinta e accende il motore principale. A fine partita il pulsante REPLAY (anche dal MENU) fa rivedere tutta la partita: le navi si muovono insieme su traiettorie continue, senza pause fra i turni, con velocità da ½× a 4× e una barra per saltare a qualunque giorno.
 
 [b][color=#ff9a5c]Gioco online[/color][/b]
 Dal menu: CREA UNA STANZA e comunica il codice di 4 lettere; gli amici scrivono il codice e premono ENTRA. Se cade la linea si rientra dallo stesso menu.
@@ -2143,6 +2143,23 @@ func _build_replay_bar() -> void:
 			board.queue_redraw()
 			_refresh_replay_bar(false))
 	row.add_child(replay_slider)
+	var nose := Button.new()
+	nose.text = "PRUA SULLA ROTTA"
+	nose.toggle_mode = true
+	nose.tooltip_text = "Le navi puntano sempre lungo la rotta e la fiamma esce da uno dei sei lati, opposto alla spinta.\nSpento: la nave ruota verso la spinta e accende il motore principale."
+	nose.custom_minimum_size = Vector2(190, 42)
+	var cfg := ConfigFile.new()
+	cfg.load(SETTINGS_PATH)
+	nose.button_pressed = cfg.get_value("vista", "nose", true)
+	board.nose_on_course = nose.button_pressed
+	nose.toggled.connect(func(v):
+		board.nose_on_course = v
+		var c2 := ConfigFile.new()
+		c2.load(SETTINGS_PATH)
+		c2.set_value("vista", "nose", v)
+		c2.save(SETTINGS_PATH)
+		board.queue_redraw())
+	row.add_child(nose)
 	var out := Button.new()
 	out.text = "ESCI DAL REPLAY"
 	out.custom_minimum_size = Vector2(170, 42)

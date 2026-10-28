@@ -36,6 +36,7 @@ var _press_offset := Vector2.ZERO
 var _moved := false
 var _fitted := false
 var _time := 0.0
+var nose_on_course := true       # le navi puntano lungo la rotta; la fiamma esce dal lato della spinta
 var replay: Dictionary = {}       # replay di fine partita (Replay.build); vuoto = gioco normale
 var replay_u := 0.0               # tempo del replay, in turni
 var _body_from := {}              # pianeti in moto: id -> posizione di partenza dell'animazione
@@ -284,14 +285,16 @@ func _draw_orbits() -> void:
 
 func _draw_gravity() -> void:
 	for h in _map.gravity:
-		var c := world(h)
 		var list: Array = _map.gravity[h]
 		var body := SolarMap.body(_map, list[0].body)
+		# durante il passo d'orbita le frecce scivolano insieme al loro corpo
+		var c := world(h) + _body_shift(list[0].body)
 		var tint: Color = body.color
 		draw_colored_polygon(_hex_poly(c, 0.97), Color(tint, 0.09))
 		var n := list.size()
 		for i in range(n):
 			var g: Dictionary = list[i]
+			c = world(h) + _body_shift(g.body)
 			var dir := world(g.acc).normalized()
 			var side := Vector2(-dir.y, dir.x)
 			var shift := side * (float(i) - float(n - 1) * 0.5) * 0.38
@@ -328,6 +331,22 @@ func _draw_asteroids() -> void:
 			var shade := base.lerp(Color("4a3f35") if not special else Color("33508a"), float(r[2]))
 			draw_circle(p, rad, shade)
 			draw_circle(p - Vector2(rad, rad) * 0.3, rad * 0.45, Color(base.lightened(0.35), 0.6))
+
+## Spostamento residuo di un corpo che sta scivolando verso il nuovo esagono (zero se è fermo).
+func _body_shift(id: String) -> Vector2:
+	if _body_t >= 1.0 or not _body_from.has(id): return Vector2.ZERO
+	var b := SolarMap.body(_map, id)
+	if b.is_empty(): return Vector2.ZERO
+	return _body_pos(b) - world(b.hex)
+
+## Navi a terra o nell'anello di gravità di un corpo in movimento: scivolano con lui.
+func _carried_shift(s: Dictionary) -> Vector2:
+	if _body_t >= 1.0 or _body_from.is_empty(): return Vector2.ZERO
+	if s.landed != "": return _body_shift(s.landed)
+	for id in _body_from:
+		var b := SolarMap.body(_map, id)
+		if not b.is_empty() and Hex.distance(s.pos, b.hex) <= 1: return _body_shift(id)
+	return Vector2.ZERO
 
 ## Posizione disegnata di un corpo (durante lo scivolamento dopo un passo d'orbita).
 func _body_pos(b: Dictionary) -> Vector2:
@@ -457,8 +476,8 @@ func _ship_world(s: Dictionary) -> Vector2:
 	if s.landed != "":
 		var body := SolarMap.body(_map, s.landed)
 		var dir := world(Hex.DIRS[maxi(0, int(s.side))]).normalized()
-		return world(body.hex) + dir * (float(body.radius) + 0.26)
-	return world(s.pos)
+		return _body_pos(body) + dir * (float(body.radius) + 0.26)
+	return world(s.pos) + _carried_shift(s)
 
 static func _ease(t: float) -> float:
 	return t * t * (3.0 - 2.0 * t)
@@ -716,9 +735,12 @@ func _draw_token(s: Dictionary, p: Vector2, r: float) -> void:
 		var thrust := _thrust_of(s)
 		if thrust != Vector2i.ZERO:
 			_has_puffs = true
-			var tdir := world(thrust)
-			ang = tdir.angle()
-			_draw_puff(p, tdir, float(Hex.length(thrust)), r)
+			if nose_on_course:
+				_draw_side_jets(p, thrust, r)
+			else:
+				var tdir := world(thrust)
+				ang = tdir.angle()
+				_draw_puff(p, tdir, float(Hex.length(thrust)), r)
 	var shape_col := col.lightened(0.15)
 	if Rules.is_disabled(state, s): shape_col = shape_col.lerp(Color(0.5, 0.5, 0.55), 0.6)
 	for poly in Art.ship_polys(s.type):
@@ -741,6 +763,24 @@ func _draw_token(s: Dictionary, p: Vector2, r: float) -> void:
 		draw_rect(Rect2(p + Vector2(-r * 0.25, -r * 1.25), Vector2(r * 0.5, r * 0.3)), Color.WHITE)
 	if dead:
 		draw_line(p + Vector2(-r, -r) * 0.6, p + Vector2(r, r) * 0.6, UITheme.DANGER, r * 0.15)
+
+## Le spinte di un turno scomposte nelle sei direzioni (il sovraccarico ne ha due).
+func _burn_dirs(v: Vector2i) -> Array:
+	if v == Vector2i.ZERO: return []
+	for d in Hex.DIRS:
+		if d == v: return [d]
+		if d * 2 == v: return [d, d]
+	for a in Hex.DIRS:
+		for b in Hex.DIRS:
+			if a + b == v: return [a, b]
+	return [v]
+
+## Fiamme di manovra: la nave tiene la prua sulla rotta e i getti escono da uno dei sei lati,
+## quello opposto alla spinta (come le sei scelte di spinta attorno alla deriva).
+func _draw_side_jets(p: Vector2, burn: Vector2i, r: float, alpha := 1.0) -> void:
+	for d in _burn_dirs(burn):
+		var dir := world(d).normalized()
+		_draw_puff(p - dir * r * 0.15, dir, 1.0, r * 0.8, alpha)
 
 ## Sbuffo dei motori: getto dietro la nave, opposto alla direzione della spinta.
 func _draw_puff(p: Vector2, dir: Vector2, strength: float, r: float, alpha := 1.0) -> void:
@@ -796,15 +836,19 @@ func _draw_replay() -> void:
 			draw_colored_polygon(PackedVector2Array([cur + Vector2(0, -d), cur + Vector2(d, 0), cur + Vector2(0, d), cur + Vector2(-d, 0)]), col.lightened(0.3))
 			continue
 		var burn := Replay.burn_at(tr, u)
-		var ang := heading.angle() if heading.length() > 0.01 else 0.0
+		var ang := heading.angle() if heading.length() > 0.01 else float(tr.get("ang", 0.0))
+		tr.ang = ang
 		var r := 0.55
 		var frac := fmod(u - tmin, 1.0)
-		if burn != Vector2i.ZERO:
-			# nella prima parte del movimento la nave punta nella direzione della spinta e accende i motori
-			var bdir := world(burn)
-			if frac < 0.55:
+		if burn != Vector2i.ZERO and frac < 0.55:
+			var fade := 1.0 - frac / 0.55
+			if nose_on_course:
+				_draw_side_jets(cur, burn, r, fade)
+			else:
+				# la nave punta nella direzione della spinta e accende il motore principale
+				var bdir := world(burn)
 				ang = bdir.angle()
-				_draw_puff(cur, bdir, float(Hex.length(burn)), r, 1.0 - frac / 0.55)
+				_draw_puff(cur, bdir, float(Hex.length(burn)), r, fade)
 		draw_circle(cur, r * 0.9, Color(col, 0.18))
 		for poly in Art.ship_polys(str(inf.type)):
 			var tp := PackedVector2Array()
