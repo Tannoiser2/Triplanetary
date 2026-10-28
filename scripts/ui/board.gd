@@ -36,8 +36,11 @@ var _press_offset := Vector2.ZERO
 var _moved := false
 var _fitted := false
 var _time := 0.0
+var replay: Dictionary = {}       # replay di fine partita (Replay.build); vuoto = gioco normale
+var replay_u := 0.0               # tempo del replay, in turni
 var _body_from := {}              # pianeti in moto: id -> posizione di partenza dell'animazione
 var _body_t := 1.0
+var _has_puffs := false
 
 const HEX_CORNERS := [Vector2(1, 0), Vector2(0.5, 0.8660254), Vector2(-0.5, 0.8660254), Vector2(-1, 0), Vector2(-0.5, -0.8660254), Vector2(0.5, -0.8660254)]
 
@@ -168,6 +171,7 @@ func _process(delta: float) -> void:
 	if _body_t < 1.0:
 		_body_t = minf(1.0, _body_t + delta / 1.4)
 		busy = true
+	if not replay.is_empty() or (_has_puffs and not show_trails and not show_drift): busy = true
 	if busy or selected != "": queue_redraw()
 
 func add_fx(kind: String, hex: Vector2i, delay := 0.0) -> void:
@@ -179,6 +183,9 @@ func _draw() -> void:
 	if state.is_empty() or _map.is_empty(): return
 	# con i pianeti in moto la mappa cambia a fine turno: si aggiorna senza ricostruire il reticolo
 	var m := Rules.map_of(state)
+	if not replay.is_empty() and state.has("planets0"):
+		var ps := {"planets": state.planets0, "planet_clock": 0, "xvariant": state.get("xvariant", "xmap")}
+		m = SolarMap.get_xmap(Planets.future(ps, maxi(0, floori(replay_u) - 1)), Planets.variant(state))
 	if not is_same(m, _map):
 		if m.get("xmap", false) != _map.get("xmap", false) or m.cells.size() != _map.cells.size(): _build_static()
 		else:
@@ -193,6 +200,14 @@ func _draw() -> void:
 	draw_set_transform(offset, 0.0, Vector2(zoom, zoom))
 	_draw_map_frame()
 	if _map.get("xmap", false): _draw_orbits()
+	if not replay.is_empty():
+		_draw_gravity()
+		_draw_asteroids()
+		_draw_bodies()
+		_draw_replay()
+		_draw_fx()
+		draw_set_transform(Vector2.ZERO, 0.0, Vector2.ONE)
+		return
 	if show_detection: _draw_detection()
 	_draw_gravity()
 	_draw_choices(true)
@@ -649,6 +664,17 @@ func _draw_ships() -> void:
 				scale *= 0.78
 			_draw_token(s, p, scale)
 
+## Spinta "di questo turno": quella pianificata ora, altrimenti quella dell'ultimo movimento (se recente).
+func _thrust_of(s: Dictionary) -> Vector2i:
+	var plot: Dictionary = state.plots.get(s.id, {})
+	if not plot.is_empty() and (s.owner == viewer or not state.rules.get("hidden", false)):
+		return Rules.burn_vector(plot.get("burns", []))
+	if not s.history.is_empty():
+		var h: Dictionary = s.history[-1]
+		if int(h.turn) >= int(state.turn) - 1 and not h.get("burns", []).is_empty():
+			return Rules.burn_vector(h.burns)
+	return Vector2i.ZERO
+
 func _draw_token(s: Dictionary, p: Vector2, r: float) -> void:
 	var concealed := _concealed(s)
 	var col := UITheme.player_color(state, s.owner)
@@ -685,6 +711,14 @@ func _draw_token(s: Dictionary, p: Vector2, r: float) -> void:
 	var ang := 0.0
 	if s.vel != Vector2i.ZERO: ang = world(s.vel).angle()
 	elif not s.history.is_empty() and s.history[-1].from != s.history[-1].to: ang = (world(s.history[-1].to) - world(s.history[-1].from)).angle()
+	# senza rotte né derive: la nave punta nella direzione della spinta scelta e mostra lo sbuffo dei motori
+	if not show_trails and not show_drift and s.landed == "":
+		var thrust := _thrust_of(s)
+		if thrust != Vector2i.ZERO:
+			_has_puffs = true
+			var tdir := world(thrust)
+			ang = tdir.angle()
+			_draw_puff(p, tdir, float(Hex.length(thrust)), r)
 	var shape_col := col.lightened(0.15)
 	if Rules.is_disabled(state, s): shape_col = shape_col.lerp(Color(0.5, 0.5, 0.55), 0.6)
 	for poly in Art.ship_polys(s.type):
@@ -707,6 +741,75 @@ func _draw_token(s: Dictionary, p: Vector2, r: float) -> void:
 		draw_rect(Rect2(p + Vector2(-r * 0.25, -r * 1.25), Vector2(r * 0.5, r * 0.3)), Color.WHITE)
 	if dead:
 		draw_line(p + Vector2(-r, -r) * 0.6, p + Vector2(r, r) * 0.6, UITheme.DANGER, r * 0.15)
+
+## Sbuffo dei motori: getto dietro la nave, opposto alla direzione della spinta.
+func _draw_puff(p: Vector2, dir: Vector2, strength: float, r: float, alpha := 1.0) -> void:
+	if dir == Vector2.ZERO: return
+	var back := -dir.normalized()
+	var flick := 0.85 + 0.15 * sin(_time * 31.0) + 0.08 * sin(_time * 17.0)
+	var base := p + back * r * 0.55
+	var length := r * (1.25 + 0.45 * strength) * flick
+	var side := back.orthogonal() * r * 0.3 * (0.8 + 0.25 * strength)
+	draw_colored_polygon(PackedVector2Array([base + side, base - side, base + back * length]), Color(1.0, 0.55, 0.15, 0.75 * alpha))
+	draw_colored_polygon(PackedVector2Array([base + side * 0.5, base - side * 0.5, base + back * length * 0.62]), Color(1.0, 0.92, 0.65, 0.9 * alpha))
+	# piccole nuvole di gas che si allontanano
+	for k in range(4):
+		var ph := fmod(_time * 1.6 + k * 0.25, 1.0)
+		var off := back * (length * (0.55 + ph * 1.1)) + side * (sin(k * 2.3 + _time * 3.0) * 0.6)
+		draw_circle(base + off, r * (0.09 + ph * 0.18), Color(0.85, 0.82, 0.78, (1.0 - ph) * 0.45 * alpha))
+
+## Replay: tracciati e navi in movimento continuo.
+func _draw_replay() -> void:
+	var u := replay_u
+	var tmin: float = replay.tmin
+	for id in replay.tracks:
+		var tr: Dictionary = replay.tracks[id]
+		var inf: Dictionary = replay.info.get(id, {})
+		if inf.is_empty(): continue
+		var col := UITheme.player_color(state, inf.owner)
+		var gone: float = replay.lost.get(id, INF)
+		var end_u := minf(u, gone)
+		if end_u < float(tr.times[0]): continue
+		# scia percorsa finora
+		var pts := PackedVector2Array()
+		var t := float(tr.times[0])
+		while t < end_u:
+			pts.append(Replay.pos_at(tr, t)); t += 0.2
+		var cur = Replay.pos_at(tr, end_u)
+		if cur == null: continue
+		pts.append(cur)
+		if pts.size() > 1:
+			draw_polyline(pts, Color(col, 0.42 if inf.kind == "ship" else 0.25), (1.6 if inf.kind == "ship" else 0.9) / zoom, true)
+		if u > gone:
+			# esplosione nel momento della perdita
+			var age := u - gone
+			if age < 0.8:
+				var k := age / 0.8
+				draw_circle(cur, 0.25 + k * 0.9, Color(1.0, 0.7, 0.3, (1.0 - k) * 0.7))
+				draw_circle(cur, 0.12 + k * 0.4, Color(1.0, 0.95, 0.8, (1.0 - k)))
+			continue
+		var ahead = Replay.pos_at(tr, minf(u + 0.08, float(tr.times[-1])))
+		var behind = Replay.pos_at(tr, maxf(u - 0.08, float(tr.times[0])))
+		var heading: Vector2 = (ahead - behind) if ahead != null and behind != null else Vector2.ZERO
+		if inf.kind != "ship":
+			var d := 0.16
+			draw_colored_polygon(PackedVector2Array([cur + Vector2(0, -d), cur + Vector2(d, 0), cur + Vector2(0, d), cur + Vector2(-d, 0)]), col.lightened(0.3))
+			continue
+		var burn := Replay.burn_at(tr, u)
+		var ang := heading.angle() if heading.length() > 0.01 else 0.0
+		var r := 0.55
+		var frac := fmod(u - tmin, 1.0)
+		if burn != Vector2i.ZERO:
+			# nella prima parte del movimento la nave punta nella direzione della spinta e accende i motori
+			var bdir := world(burn)
+			if frac < 0.55:
+				ang = bdir.angle()
+				_draw_puff(cur, bdir, float(Hex.length(burn)), r, 1.0 - frac / 0.55)
+		draw_circle(cur, r * 0.9, Color(col, 0.18))
+		for poly in Art.ship_polys(str(inf.type)):
+			var tp := PackedVector2Array()
+			for v in poly: tp.append(cur + (v * r).rotated(ang))
+			draw_colored_polygon(tp, col.lightened(0.2))
 
 func _star(c: Vector2, r: float, col: Color) -> void:
 	var pts := PackedVector2Array()

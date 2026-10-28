@@ -303,6 +303,8 @@ static func launch(state: Dictionary, ship_id: String, kind: String, torpedo_bur
 	var item := {"id": "o%d" % state.next_id, "kind": kind, "owner": s.owner, "pos": s.pos, "vel": s.vel,
 		"grav": s.grav.duplicate(), "launch_burn": burn_vector(torpedo_burns), "age": 0, "from": s.id, "history": []}
 	state.ordnance.append(item)
+	if not state.has("replay_ord"): state.replay_ord = {}
+	state.replay_ord[item.id] = [kind, s.owner]
 	log_event(state, "%s lancia: %s" % [s.name, ShipTypes.ORDNANCE_NAME[kind].to_lower()], "ordnance")
 	return ""
 
@@ -364,14 +366,26 @@ static func _do_movement(state: Dictionary) -> void:
 		if s.get("locked", false): plot = {}
 		_move_ship(state, map, s, plot)
 	_move_ordnance(state, map)
+	_replay_frame(state)
 	_update_detection(state)
 	Scenarios.after_movement(state)
+
+## Registro compatto per il replay di fine partita: per ogni movimento
+## [id, da.x, da.y, a.x, a.y, spinta.x, spinta.y] (gli ordigni hanno l'id "o…").
+static func _replay_frame(state: Dictionary) -> void:
+	if not state.has("replay"): state.replay = []
+	var mv := []
+	for m in state.moves:
+		var b: Vector2i = m.get("burn", Vector2i.ZERO)
+		mv.append([m.id, m.from.x, m.from.y, m.to.x, m.to.y, b.x, b.y])
+	if mv.is_empty(): return
+	state.replay.append({"t": int(state.turn), "m": mv})
 
 static func _record(state: Dictionary, s: Dictionary, from: Vector2i, to: Vector2i, burns: Array, path: Array, note := "") -> void:
 	s.history.append({"turn": state.turn, "from": from, "to": to, "burns": burns.duplicate(), "note": note})
 	if s.history.size() > 40: s.history.pop_front()
 	s.last_path = path.duplicate()
-	state.moves.append({"id": s.id, "from": from, "to": to, "path": path.duplicate(), "result": note})
+	state.moves.append({"id": s.id, "from": from, "to": to, "path": path.duplicate(), "result": note, "burn": burn_vector(burns)})
 
 static func _move_ship(state: Dictionary, map: Dictionary, s: Dictionary, plot: Dictionary) -> void:
 	var disabled := is_disabled(state, s)
@@ -657,6 +671,7 @@ static func _destroy(state: Dictionary, s: Dictionary, why: String) -> void:
 	s.killed_by = state.get("blame", "")
 	s.destroyed = true
 	s.reason = why
+	s.lost_turn = int(state.turn)
 	log_event(state, "%s %s" % [s.name, why], "loss")
 	fx(state, "explosion", s.pos)
 	Scenarios.on_destroyed(state, s)

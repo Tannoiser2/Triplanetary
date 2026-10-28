@@ -83,6 +83,12 @@ var net: Net
 var online: Online = null
 var lobby := {}               # stanza in preparazione: {code, seat, role, config}
 var lobby_box: Control
+var replay_bar: PanelContainer
+var replay_play := false
+var replay_speed := 1.0
+var replay_slider: HSlider
+var replay_label: Label
+var replay_toggle: Button
 var autoplay := false         # prove automatiche: l'IA gioca anche per il giocatore locale
 var _gen := 0                 # cambia a ogni nuova partita: ferma le attese della precedente
 var privacy: Control
@@ -108,6 +114,7 @@ func _ready() -> void:
 	net = Net.new()
 	add_child(net)
 	_build_hud()
+	_build_replay_bar()
 	_build_menu()
 	_build_help()
 	get_viewport().size_changed.connect(_layout)
@@ -299,6 +306,10 @@ func _layout() -> void:
 	toast.size = Vector2(vs.x - side_w, 40)
 	thinking.position = Vector2(16, TOP_H + 14)
 	thinking.size = Vector2(600, 30)
+	if replay_bar != null:
+		replay_bar.position = Vector2(20, vs.y - 78)
+		replay_bar.size = Vector2(vs.x - 40, 66)
+		if replay_bar.visible: board.safe_rect = Rect2(10, 10, vs.x - 20, vs.y - 100)
 
 # ================================================================ avvio partita
 
@@ -1721,6 +1732,11 @@ func _show_victory() -> void:
 	var look := Button.new(); look.text = "GUARDA LA PLANCIA"; look.custom_minimum_size = Vector2(220, 46)
 	look.pressed.connect(func(): victory.queue_free(); victory = null)
 	row.add_child(look)
+	if not state.get("replay", []).is_empty():
+		var rp := Button.new(); rp.text = "REPLAY"; rp.custom_minimum_size = Vector2(140, 46)
+		rp.tooltip_text = "Rivedi tutta la partita: le navi si muovono insieme, senza pause fra i turni"
+		rp.pressed.connect(func(): victory.queue_free(); victory = null; _start_replay())
+		row.add_child(rp)
 	add_child(victory)
 
 func _toast(text: String, warn := false) -> void:
@@ -1741,6 +1757,8 @@ func _open_game_menu() -> void:
 	var items := [
 		["RIPRENDI", func(): close.call()],
 	]
+	if state.over and not state.get("replay", []).is_empty():
+		items.append(["REPLAY DELLA PARTITA", func(): close.call(); _start_replay()])
 	if online != null:
 		items.append(["COPIA IL SALVATAGGIO NEGLI APPUNTI", func():
 			DisplayServer.clipboard_set(Persistence.to_json(state)); _toast("Salvataggio copiato"); close.call()])
@@ -1818,6 +1836,9 @@ In Nova, Retribution, The Fleet Mutiny, Interplanetary War e Prospecting la part
 
 [b][color=#ff9a5c]Mappa ampliata[/color][/b]
 In ogni scenario si può scegliere la mappa ampliata di Mike Rowles (interna fino a Giove o completa fino a Plutone): i pianeti girano attorno al Sole in senso antiorario (il cerchio colorato è l'orbita, la freccia indica il prossimo esagono). Le navi a terra o nei campi di gravità di un pianeta si spostano con lui. L'anello interno del Sole ha gravità tripla, quello di Giove doppia: avvicinarsi al Sole richiede molta prudenza.
+
+[b][color=#ff9a5c]Visualizzazione e replay[/color][/b]
+Con ROTTE e DERIVA spenti la plancia si fa pulita: ogni nave punta nella direzione della spinta scelta per il turno e mostra lo sbuffo dei motori. A fine partita il pulsante REPLAY (anche dal MENU) fa rivedere tutta la partita: le navi si muovono insieme su traiettorie continue, senza pause fra i turni, con velocità da ½× a 4× e una barra per saltare a qualunque giorno.
 
 [b][color=#ff9a5c]Gioco online[/color][/b]
 Dal menu: CREA UNA STANZA e comunica il codice di 4 lettere; gli amici scrivono il codice e premono ENTRA. Se cade la linea si rientra dallo stesso menu.
@@ -2044,6 +2065,88 @@ func _start_from_menu() -> void:
 		return
 	var st := Scenarios.create(menu_scenario, seats, _scenario_options(menu_options))
 	_start_game(st)
+
+# ================================================================ replay di fine partita
+
+func _build_replay_bar() -> void:
+	replay_bar = _panel(Color("0a1630f0"), UITheme.LINE_BRIGHT, 10, 12)
+	replay_bar.visible = false
+	add_child(replay_bar)
+	var row := HBoxContainer.new()
+	row.add_theme_constant_override("separation", 10)
+	replay_bar.add_child(row)
+	replay_label = UITheme.label("GIORNO 1", 20, UITheme.PHOSPHOR, UITheme.display)
+	replay_label.custom_minimum_size = Vector2(170, 0)
+	row.add_child(replay_label)
+	replay_toggle = UITheme.primary_button("PAUSA")
+	replay_toggle.custom_minimum_size = Vector2(120, 42)
+	replay_toggle.pressed.connect(func():
+		if not replay_play and board.replay_u >= float(board.replay.tmax): board.replay_u = float(board.replay.tmin)
+		replay_play = not replay_play
+		_refresh_replay_bar())
+	row.add_child(replay_toggle)
+	for sp in [0.5, 1.0, 2.0, 4.0]:
+		var b := Button.new()
+		b.text = ("%s×" % sp).replace(".0×", "×").replace("0.5×", "½×")
+		b.toggle_mode = true
+		b.custom_minimum_size = Vector2(54, 42)
+		b.set_meta("speed", sp)
+		b.pressed.connect(func(): replay_speed = sp; _refresh_replay_bar())
+		row.add_child(b)
+	replay_slider = HSlider.new()
+	replay_slider.custom_minimum_size = Vector2(380, 42)
+	replay_slider.step = 0.01
+	replay_slider.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	replay_slider.value_changed.connect(func(v):
+		if absf(v - board.replay_u) > 0.02:
+			board.replay_u = v
+			board.queue_redraw()
+			_refresh_replay_bar(false))
+	row.add_child(replay_slider)
+	var out := Button.new()
+	out.text = "ESCI DAL REPLAY"
+	out.custom_minimum_size = Vector2(170, 42)
+	out.pressed.connect(_stop_replay)
+	row.add_child(out)
+
+func _start_replay() -> void:
+	board.replay = Replay.build(state)
+	board.replay_u = float(board.replay.tmin)
+	replay_play = true
+	replay_slider.min_value = float(board.replay.tmin)
+	replay_slider.max_value = float(board.replay.tmax) + 0.6
+	hud.visible = false
+	tip.visible = false
+	replay_bar.visible = true
+	_layout()
+	board.fit()
+	_refresh_replay_bar()
+
+func _stop_replay() -> void:
+	board.replay = {}
+	replay_play = false
+	replay_bar.visible = false
+	hud.visible = true
+	_layout()
+	board.queue_redraw()
+	_refresh()
+
+func _refresh_replay_bar(set_slider := true) -> void:
+	if board.replay.is_empty(): return
+	replay_label.text = "GIORNO %d" % clampi(ceili(board.replay_u), 1, 9999)
+	replay_toggle.text = "PAUSA" if replay_play else "AVVIA"
+	for c in replay_toggle.get_parent().get_children():
+		if c is Button and c.has_meta("speed"): c.button_pressed = is_equal_approx(float(c.get_meta("speed")), replay_speed)
+	if set_slider: replay_slider.set_value_no_signal(board.replay_u)
+
+func _process(delta: float) -> void:
+	if board == null or board.replay.is_empty() or not replay_play: return
+	board.replay_u += delta * replay_speed / 0.7
+	var end := float(board.replay.tmax) + 0.6
+	if board.replay_u >= end:
+		board.replay_u = end
+		replay_play = false
+	_refresh_replay_bar()
 
 # ================================================================ gioco online
 

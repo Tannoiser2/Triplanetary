@@ -33,6 +33,7 @@ func _init() -> void:
 	test_variants()
 	test_xmap()
 	test_xmap_full()
+	test_replay()
 	if failures == 0: print("OK: %d controlli" % count)
 	else: printerr("%d/%d controlli falliti" % [failures, count])
 	quit(1 if failures else 0)
@@ -357,3 +358,17 @@ func test_xmap_full() -> void:
 	check(int(m.edge_y) < -100, "il bordo esterno è oltre Plutone")
 	var x2 := Scenarios.create("retribution", [{"name": "A", "type": "ai"}, {"name": "B", "type": "ai"}], {"seed": 9, "map": "xmap"})
 	check(not SolarMap.body(Rules.map_of(x2), "clandestine").is_empty() and x2.special.size() == 6, "Clandestine e i suoi asteroidi speciali sulla mappa ampliata")
+
+func test_replay() -> void:
+	var st := Scenarios.create("grand-tour", [{"name": "A", "type": "ai"}, {"name": "B", "type": "ai"}], {"seed": 4})
+	var g := 0
+	while int(st.turn) < 8 and g < 400:
+		AI.play_step(st); g += 1
+	check(st.replay.size() >= 10, "registro del replay (%d movimenti)" % st.replay.size())
+	var rp := Replay.build(st)
+	var tr: Dictionary = rp.tracks[st.ships[0].id]
+	check(tr.times.size() >= 6, "tracciato continuo per ogni nave")
+	var a = Replay.pos_at(tr, float(tr.times[2]))
+	check(a != null and a.distance_to(tr.pts[2]) < 0.01, "la curva passa per le posizioni di fine turno")
+	var back := Persistence.from_json(Persistence.to_json(st))
+	check(back.replay.size() == st.replay.size(), "il replay si salva con la partita")

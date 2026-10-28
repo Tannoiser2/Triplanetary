@@ -65,6 +65,7 @@ static func setup(state: Dictionary) -> void:
 			pos[o.id] = (lead - int(path(o.id).size() * float(o.lag_deg) / 360.0) + path(o.id).size()) % path(o.id).size()
 	state.planets = pos
 	state.planet_clock = 0
+	state.planets0 = pos.duplicate()
 
 static func _stays(o: Dictionary, idx: int, cells: Dictionary) -> bool:
 	var p := path(o.id)

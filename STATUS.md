@@ -11,6 +11,7 @@ Aggiornato al 26 ottobre 2026 — riscrittura completa e tutti gli otto scenari 
 - IA per tutti gli scenari e per tutte le parti. Le rotte evitano mine, traiettorie degli ordigni e difese planetarie nemiche; una rete di sicurezza scarta le rotte che portano a schiantarsi o a uscire dalla plancia; la ricerca tiene conto del carburante residuo (niente più navi a secco a metà strada); le mine si lanciano sulle rotte nemiche; il fuoco sceglie i bersagli per valore atteso (danni cumulativi, eliminazione).
 - Hot-seat, schermata di passaggio, salvataggi, export Web.
 - Gioco online su Firebase (stanze con codice, posti IA giocati da chi crea la stanza, rientro, subentro dell'IA per gli assenti).
+- Replay di fine partita (registro compatto dei movimenti salvato con la partita) e plancia pulita con l'orientamento e lo sbuffo dei motori.
 - Interruttori di visualizzazione ROTTE, DERIVA e RADAR (tasti R, D, V), ricordati fra una sessione e l'altra.
 - 95 controlli automatici in `tests/run_tests.gd`, comprese partite complete IA contro IA in tutti gli scenari.
 
