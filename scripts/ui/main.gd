@@ -94,7 +94,7 @@ var menu_scenario := "grand-tour"
 var menu_seats: Array = []
 var menu_detail: VBoxContainer
 var menu_options := {"sol_classic": false, "liner_terra": false, "nova_allied": true, "length": 120,
-	"route": "free", "aliens": 4, "mutiny_ships": 12, "mutiny_hidden": false}
+	"route": "free", "aliens": 4, "mutiny_ships": 12, "mutiny_hidden": false, "map": "classic"}
 
 func _ready() -> void:
 	theme = UITheme.theme()
@@ -1815,6 +1815,12 @@ Mine (10 t) e testate (20 t) ereditano il vettore della nave, che deve cambiare 
 [b][color=#ff9a5c]Scenari con acquisti[/color][/b]
 In Nova, Retribution, The Fleet Mutiny, Interplanetary War e Prospecting la partita comincia con la preparazione: scelte nel pannello a destra, acquisti con i pulsanti + e −, poi lo schieramento cliccando gli esagoni evidenziati in verde (il pulsante cambia il verso delle orbite). Nella guerra interplanetaria il cantiere si apre durante l'astrogazione o il rifornimento; in Fleet Mutiny, in fase di combattimento, una nave in orbita sopra un lato della Terra può sopprimerlo.
 
+[b][color=#ff9a5c]Mappa ampliata[/color][/b]
+Nel Grand Tour si può scegliere la mappa ampliata di Mike Rowles: i pianeti girano attorno al Sole in senso antiorario (il cerchio colorato è l'orbita, la freccia indica il prossimo esagono). Le navi a terra o nei campi di gravità di un pianeta si spostano con lui. L'anello interno del Sole ha gravità tripla, quello di Giove doppia: avvicinarsi al Sole richiede molta prudenza.
+
+[b][color=#ff9a5c]Gioco online[/color][/b]
+Dal menu: CREA UNA STANZA e comunica il codice di 4 lettere; gli amici scrivono il codice e premono ENTRA. Se cade la linea si rientra dallo stesso menu.
+
 [b][color=#ff9a5c]Comandi[/color][/b]
 Rotella: zoom · trascina: sposta la plancia · R: rotte percorse · D: vettori di deriva · V: rilevatori · clic destro: annulla la selezione · Tab: nave successiva · barra spaziatrice: deriva · Invio: conferma la fase · F: adatta la plancia."""
 
@@ -1967,6 +1973,10 @@ func _build_menu_detail() -> void:
 		al.button_pressed = menu_options.nova_allied
 		al.toggled.connect(func(on): menu_options.nova_allied = on)
 		menu_detail.add_child(al)
+	if info.get("xmap", false):
+		menu_detail.add_child(_option_row("Plancia:", [["classic", "CLASSICA"], ["xmap", "AMPLIATA · PIANETI IN MOTO"]], "map"))
+		if menu_options.map == "xmap":
+			menu_detail.add_child(_rich("[color=#9aa7c2]Mappa ampliata di Mike Rowles (76 × 53 esagoni, scala variabile): i pianeti girano attorno al Sole in senso antiorario, Mercurio di un esagono ogni 2 turni, Venere ogni 3, la Terra ogni 4, Marte ogni 5, Vesta ogni 11, Ceres e Pallade ogni 12; Giove resta fermo. Il Sole ha un anello interno a gravità tripla, Giove gravità doppia. Navi in orbita o a terra si muovono con il loro pianeta.[/color]", 14))
 	if menu_scenario == "grand-tour":
 		menu_detail.add_child(_option_row("Rotta:", [["free", "LIBERA"], ["alpha", "ALFABETICA"], ["size", "PER DIMENSIONE"], ["distance", "DISTANZA DAL SOLE"]], "route"))
 	if menu_scenario == "nova":

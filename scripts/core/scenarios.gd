@@ -5,7 +5,7 @@ extends RefCounted
 const PLAYER_COLORS := ["#ff8a3d", "#3fb6ff", "#43e08f", "#f2d94e", "#e46bff", "#e8e8e8"]
 
 const CATALOG := [
-	{"id": "grand-tour", "title": "Grand Tour", "year": "2037 AD", "players": "2–6", "min": 2, "max": 6, "length": "Corsa",
+	{"id": "grand-tour", "title": "Grand Tour", "year": "2037 AD", "players": "2–6", "min": 2, "max": 6, "length": "Corsa", "xmap": true,
 		"playable": true, "ai": true,
 		"blurb": "Gara attorno al Sistema Solare: attraversa un campo di gravità piena di ogni corpo e torna ad atterrare sulla Terra. Carburante gratuito solo su Terra, Venere, Marte e Callisto.",
 		"sides": ["Pilota", "Pilota", "Pilota", "Pilota", "Pilota", "Pilota"]},
@@ -42,6 +42,12 @@ static func info(id: String) -> Dictionary:
 ## seats: [{name, type:"human"|"ai"}]  options: {sol_classic, liner_terra, seed}
 static func create(id: String, seats: Array, options: Dictionary = {}) -> Dictionary:
 	var state := _base_state(id, seats, options)
+	if options.get("map", "classic") == "xmap" and info(id).get("xmap", false):
+		# mappa ampliata di Mike Rowles: i pianeti partono in posizioni casuali e si muovono
+		Planets.setup(state)
+		var xm := Rules.map_of(state)
+		state.asteroids = xm.asteroids.duplicate()
+		state.special = []
 	match id:
 		"grand-tour": _setup_grand_tour(state)
 		"escape": _setup_escape(state)
@@ -80,6 +86,7 @@ static func _add_bases(state: Dictionary, body_ids: Array, owner: String, extra:
 	var map := Rules.map_of(state)
 	for bid in body_ids:
 		var b := SolarMap.body(map, bid)
+		if b.is_empty(): continue
 		if b.asteroid_base:
 			var base := {"id": "base-%s" % bid, "body": bid, "side": -1, "owner": owner, "active": true, "defense": false, "fuel": true, "ordnance": true, "kind": "asteroid"}
 			base.merge(extra, true)
@@ -113,7 +120,7 @@ static func _setup_grand_tour(state: Dictionary) -> void:
 	var map := Rules.map_of(state)
 	state.rules.ordnance = false
 	_add_bases(state, ["terra", "venus", "mars", "callisto"], "all", {"defense": false})
-	_add_bases(state, ["mercury", "luna", "io", "ganymede", "ceres", "clandestine"], "all", {"defense": false, "fuel": false})
+	_add_bases(state, ["mercury", "luna", "io", "ganymede", "ceres", "clandestine", "vesta", "pallas"], "all", {"defense": false, "fuel": false})
 	var sides := [0, 3, 1, 4, 2, 5]
 	for i in range(state.players.size()):
 		var p: Dictionary = state.players[i]

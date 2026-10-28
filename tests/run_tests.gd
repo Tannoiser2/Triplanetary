@@ -30,6 +30,8 @@ func _init() -> void:
 	test_fleet_shop()
 	test_orbital_base()
 	test_new_scenarios()
+	test_variants()
+	test_xmap()
 	if failures == 0: print("OK: %d controlli" % count)
 	else: printerr("%d/%d controlli falliti" % [failures, count])
 	quit(1 if failures else 0)
@@ -299,3 +301,46 @@ func test_new_scenarios() -> void:
 		check(st.over or int(st.turn) >= 40, "%s: la partita procede (giorno %d) %s" % [id, st.turn, st.result])
 		var back := Persistence.from_json(Persistence.to_json(st))
 		check(not back.is_empty() and back.sd.size() == st.sd.size(), "%s: salvataggio" % id)
+
+func test_variants() -> void:
+	var st := Scenarios.create("grand-tour", [{"name": "A", "type": "ai"}, {"name": "B", "type": "ai"}], {"seed": 3, "route": "distance"})
+	check(st.sd.route == ["sol", "mercury", "venus", "mars", "jupiter", "ganymede", "callisto"], "rotta obbligata per distanza dal Sole")
+	var s: Dictionary = st.ships[0]
+	Scenarios.on_visits(st, s, ["venus"])
+	check(int(s.route_idx) == 0, "fuori ordine la tappa non conta")
+	Scenarios.on_visits(st, s, ["sol", "mercury"])
+	check(int(s.route_idx) == 2 and Scenarios.gt_missing(st, s) == ["venus"], "le tappe in ordine avanzano")
+	var nv := Scenarios.create("nova", [{"name": "A", "type": "ai"}, {"name": "B", "type": "ai"}, {"name": "C", "type": "ai"}], {"seed": 3, "aliens": 6})
+	var g := 0
+	while nv.phase == "setup" and g < 200:
+		AI.play_step(nv); g += 1
+	check(nv.ships.filter(func(x): return x.owner == "P3").size() == 6, "Nova con sei corsari alieni")
+	var mu := Scenarios.create("fleet-mutiny", [{"name": "A", "type": "ai"}, {"name": "B", "type": "ai"}], {"seed": 3, "mutiny_ships": 8, "mutiny_hidden": true})
+	g = 0
+	while mu.phase == "setup" and g < 200:
+		AI.play_step(mu); g += 1
+	check(mu.rules.hidden and mu.ships.filter(func(x): return not x.get("is_base", false)).size() == 8, "Fleet Mutiny con 8 navi e pedine coperte")
+
+func test_xmap() -> void:
+	for id in ["mercury", "terra", "mars", "ceres"]:
+		var p := Planets.path(id)
+		var ok := true
+		for i in range(p.size()):
+			if Hex.distance(p[i], p[(i + 1) % p.size()]) != 1: ok = false
+		check(ok, "orbita di %s senza salti (%d esagoni)" % [id, p.size()])
+	check(Planets.path("terra").size() >= 95 and Planets.path("terra").size() <= 120, "circonferenza dell'orbita terrestre circa 100 esagoni")
+	var st := Scenarios.create("grand-tour", [{"name": "A", "type": "ai"}, {"name": "B", "type": "ai"}], {"seed": 5, "map": "xmap"})
+	var m := Rules.map_of(st)
+	check(m.get("xmap", false) and m.cells.size() == 4028, "mappa ampliata: 76 x 53 esagoni")
+	check(m.gravity[Hex.DIRS[0]][0].acc == -Hex.DIRS[0] * 3, "Sole: anello interno a gravità tripla")
+	var terra: Vector2i = SolarMap.body(m, "terra").hex
+	check(m.cells.has(terra), "la Terra parte sulla plancia")
+	var s: Dictionary = st.ships[0]
+	check(s.landed == "terra" and s.pos == terra, "si parte a terra")
+	# un'orbita intera: dopo 4 turni la Terra avanza di un esagono e la nave a terra la segue
+	for i in range(4): Planets.advance(st)
+	var t2: Vector2i = SolarMap.body(Rules.map_of(st), "terra").hex
+	check(Hex.distance(t2, terra) == 1, "la Terra avanza di un esagono ogni 4 turni")
+	check(s.pos == t2, "la nave a terra si muove con il pianeta")
+	var back := Persistence.from_json(Persistence.to_json(st))
+	check(back.planets == st.planets, "salvataggio delle posizioni dei pianeti")

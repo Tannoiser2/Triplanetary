@@ -18,6 +18,8 @@ Versione digitale per uso personale di *Triplanetary* (Game Designers' Workshop,
   - *The Fleet Mutiny*: dodici navi e due basi orbitali imperiali, cinque unità designate che si ammutinano, soppressione dei lati della Terra, cattura delle basi;
   - *Interplanetary War*: flotte in MegaCrediti, depositi di ordigni, testate nucleari, produzione delle basi e crediti da trasportare con navi commerciali;
   - *Prospecting* (2–6 cercatori): prospezione a velocità 1, minerale e schegge CT, miniere automatiche, guardie robot, mercati di Ceres e Luna.
+- **Varianti del manuale**: rotta obbligata nel Grand Tour (alfabetica, per dimensione, per distanza dal Sole), flotta aliena da 2 a 6 corsari in Nova, flotta imperiale da 8 a 16 navi e pedine coperte in The Fleet Mutiny, nave di linea dalla Terra in Lateral 7.
+- **Mappa ampliata con i pianeti in moto** (Grand Tour): la *Expanded Triplanetary Map* di Mike Rowles (76 × 53 esagoni a scala variabile, da Mercurio a Giove) trascritta da `tools/build_xmap.py`. I pianeti girano attorno al Sole in senso antiorario (Mercurio un esagono ogni 2 turni, Venere 3, Terra 4, Marte 5, Vesta 11, Ceres e Pallade 12; Giove fermo), il Sole ha un anello interno a gravità tripla e Giove gravità doppia. Lune, basi e navi a terra o nei campi di gravità si muovono con il loro pianeta; l'IA pianifica le rotte tenendo conto delle posizioni future.
 - **Avversario IA**: pianifica le rotte con una ricerca A* sugli stati vettoriali (posizione, velocità, gravità in sospeso), gestisce carburante e rifornimenti, intercetta, combatte, ispeziona. Non sbircia le informazioni nascoste.
 - **Gioco online** su Firebase, come gli altri giochi della ludoteca (vedi sotto).
 - **Hot-seat** con schermata di passaggio negli scenari con informazioni nascoste, salvataggio automatico, slot manuale e salvataggio portabile negli appunti.
@@ -83,6 +85,7 @@ scripts/ui/     plancia, interfaccia, grafica procedurale, widget
 scripts/net/    Firebase (REST) e partita online a istantanee
 firebase/       regole del Realtime Database
 data/map.json   plancia trascritta (generata da tools/build_map.py)
+data/xmap.json  mappa ampliata di Mike Rowles (generata da tools/build_xmap.py)
 tools/          trascrizione della mappa e mappa sorgente di riferimento (escluse dalla build)
 ludoteca/       scheda e copertina per la Ludoteca Virtuale
 ```

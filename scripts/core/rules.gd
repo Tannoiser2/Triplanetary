@@ -29,6 +29,7 @@ const ORDNANCE_LIFE := 5
 # ---------------------------------------------------------------- utilità di base
 
 static func map_of(state: Dictionary) -> Dictionary:
+	if state.has("planets"): return SolarMap.get_xmap(state.planets)
 	return SolarMap.get_map(state.options.get("sol_classic", false))
 
 static func player_ids(state: Dictionary) -> Array:
@@ -337,6 +338,7 @@ static func _next_segment(state: Dictionary) -> void:
 			Scenarios.end_of_turn(state)
 			if state.over: return
 			state.turn = int(state.turn) + 1
+			Planets.advance(state)
 		if _player_active(state, current_player(state)):
 			Scenarios.start_of_segment(state)
 			return

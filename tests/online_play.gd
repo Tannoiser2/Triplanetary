@@ -18,6 +18,7 @@ func _init() -> void:
 	scene.anim_speed = 60.0
 	if role == "host":
 		scene.menu_scenario = scen
+		if OS.get_environment("TP_MAP") != "": scene.menu_options.map = OS.get_environment("TP_MAP")
 		scene.menu_seats = [{"name": "", "type": "human"}, {"name": "", "type": "human"}, {"name": "", "type": "ai"},
 			{"name": "", "type": "none"}, {"name": "", "type": "none"}, {"name": "", "type": "none"}]
 		var err: String = await scene._online_create("Ospite di casa")

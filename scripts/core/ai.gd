@@ -328,6 +328,9 @@ static func _search(state: Dictionary, s: Dictionary, goal: Callable, heuristic:
 	var speed_cap := maxi(MAX_SPEED, Hex.length(s.vel + Rules.pending_sum(s)) + 1)
 	var burn_w := 0.6 if state.scenario == "prospecting" else 0.04
 	var hz := hazards(state, s)
+	# pianeti in moto: ogni profondità della ricerca usa la mappa di quel turno
+	var moving: bool = state.has("planets")
+	var tmaps := {}
 	var expansions := 0
 	while not heap.is_empty() and expansions < budget:
 		var top: Array = _pop(heap)
@@ -339,15 +342,20 @@ static func _search(state: Dictionary, s: Dictionary, goal: Callable, heuristic:
 			for d in range(6): options.append([d])
 		for burns in options:
 			var bv := Rules.burn_vector(burns)
-			var r := Rules.simulate(map, node.pos, node.vel, [node.g], bv, false, state.asteroids, state.special, s.access_special)
+			var mt := map
+			if moving:
+				var tt := int(node.turns)
+				if not tmaps.has(tt): tmaps[tt] = SolarMap.get_xmap(Planets.future(state, tt))
+				mt = tmaps[tt]
+			var r := Rules.simulate(mt, node.pos, node.vel, [node.g], bv, false, state.asteroids, state.special, s.access_special)
 			if r.crash != "" or r.special: continue
 			var g := Vector2i.ZERO
 			for a in r.grav: g += a
 			var child := {"pos": r.dest, "vel": r.vel, "g": g, "fuel": int(node.fuel) - burns.size(),
 				"turns": int(node.turns) + 1, "parent": idx, "burns": burns, "orbit": "", "r": r}
-			if burns.is_empty() and Hex.length(r.vel) == 1 and map.gravity.has(node.pos) and map.gravity.has(r.dest):
-				for ga in map.gravity[node.pos]:
-					for gb in map.gravity[r.dest]:
+			if burns.is_empty() and Hex.length(r.vel) == 1 and mt.gravity.has(node.pos) and mt.gravity.has(r.dest):
+				for ga in mt.gravity[node.pos]:
+					for gb in mt.gravity[r.dest]:
 						if ga.body == gb.body: child.orbit = ga.body
 			var hazard := 0.0
 			if not r.asteroids.is_empty(): hazard = 4.0 * r.asteroids.size()
@@ -544,21 +552,29 @@ static func search_visit(state: Dictionary, s: Dictionary, body_id: String, rese
 	var b := SolarMap.body(map, body_id)
 	var radius := 2 if body_id == "sol" and not map.sol_classic else 1
 	var goal := func(_n: Dictionary, r: Dictionary) -> bool: return not r.offmap and r.visits.has(body_id) and (s.infinite_fuel or int(_n.fuel) >= reserve)
-	var h := func(n: Dictionary) -> float: return float(reach_bound(n.pos, n.vel + n.g, b.hex, radius))
+	var moving: bool = state.has("planets")
+	var h := func(n: Dictionary) -> float:
+		var bh: Vector2i = Planets.body_hex_at(state, body_id, int(n.turns)) if moving else b.hex
+		return float(reach_bound(n.pos, n.vel + n.g, bh, radius))
 	return _search(state, s, goal, h, budget, 0)
 
 static func search_orbit(state: Dictionary, s: Dictionary, body_id: String, reserve: int, budget: int) -> Dictionary:
 	var map := Rules.map_of(state)
 	var b := SolarMap.body(map, body_id)
 	var goal := func(n: Dictionary, r: Dictionary) -> bool: return not r.offmap and n.orbit == body_id and (s.infinite_fuel or int(n.fuel) >= reserve)
+	var moving: bool = state.has("planets")
 	var h := func(n: Dictionary) -> float:
-		return float(h_arrive(n.pos, n.vel + n.g, b.hex, Vector2i.ZERO, 1, 1) + 1)
+		var bh: Vector2i = Planets.body_hex_at(state, body_id, int(n.turns)) if moving else b.hex
+		return float(h_arrive(n.pos, n.vel + n.g, bh, Vector2i.ZERO, 1, 1) + 1)
 	var plan := _search(state, s, goal, h, budget, 0, false, 1.5)
 	if not plan.is_empty() and not plan.get("partial", false): return plan
 	# avvicinamento rilassato: entra nel campo di gravità a bassa velocità, l'inserimento si rifinisce dopo
 	var approach := func(n: Dictionary, r: Dictionary) -> bool:
-		return not r.offmap and Hex.distance(n.pos, b.hex) <= 2 and Hex.length(n.vel + n.g) <= 2 and (s.infinite_fuel or int(n.fuel) >= reserve + 3)
-	var h2 := func(n: Dictionary) -> float: return float(h_arrive(n.pos, n.vel + n.g, b.hex, Vector2i.ZERO, 2, 2))
+		var bh0: Vector2i = Planets.body_hex_at(state, body_id, int(n.turns)) if moving else b.hex
+		return not r.offmap and Hex.distance(n.pos, bh0) <= 2 and Hex.length(n.vel + n.g) <= 2 and (s.infinite_fuel or int(n.fuel) >= reserve + 3)
+	var h2 := func(n: Dictionary) -> float:
+		var bh: Vector2i = Planets.body_hex_at(state, body_id, int(n.turns)) if moving else b.hex
+		return float(h_arrive(n.pos, n.vel + n.g, bh, Vector2i.ZERO, 2, 2))
 	var plan2 := _search(state, s, approach, h2, budget, 0, false, 1.5)
 	return plan2 if not plan2.is_empty() else plan
 

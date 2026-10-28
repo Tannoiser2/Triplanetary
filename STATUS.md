@@ -14,6 +14,8 @@ Aggiornato al 26 ottobre 2026 — riscrittura completa e tutti gli otto scenari 
 - Interruttori di visualizzazione ROTTE, DERIVA e RADAR (tasti R, D, V), ricordati fra una sessione e l'altra.
 - 95 controlli automatici in `tests/run_tests.gd`, comprese partite complete IA contro IA in tutti gli scenari.
 
+- Varianti del manuale per Grand Tour, Nova e The Fleet Mutiny; mappa ampliata con i pianeti in moto per il Grand Tour.
+
 ## Scelte interpretative
 
 - **Sol**: la mappa A4 usata ha un doppio anello di frecce attorno al Sole (frecce doppie nell'anello interno, coppie divergenti sui lati dell'anello esterno). È il comportamento predefinito; l'opzione *Sol classico* nel menu ripristina un solo anello come nella plancia GDW originale.
@@ -27,10 +29,13 @@ Aggiornato al 26 ottobre 2026 — riscrittura completa e tutti gli otto scenari 
 - **Retribution**: le corvette non partono da Clandestine (la missione sarebbe già compiuta). La nave assegnata alla Security Patrol è quella Enforcer più vicina alla Terra. "A terra per 12 turni" conta i turni consecutivi.
 - **The Fleet Mutiny**: le 12 navi si scelgono liberamente; le basi orbitali vanno in orbita. Solo le navi (non le basi orbitali) sopprimono i lati. Una base si conquista atterrandoci, fermandosi nell'esagono di una base asteroidale o accoppiando la rotta con una base orbitale senza difensori. Al primo turno muovono i ribelli.
 - **Interplanetary War**: gli ordigni comprati restano in deposito sul mondo di casa e le navi li caricano in base; le basi orbitali comprate in partita compaiono in orbita attorno al mondo di casa. Mercurio, Ceres e Clandestine non hanno basi attive. La Terra vince appena la flotta ribelle è tutta distrutta.
+- **Rotta obbligata**: la Terra è partenza e arrivo, le altre sette tappe vanno toccate nell'ordine annunciato; un corpo toccato fuori ordine non conta. Ordine per dimensione: Sol, Giove, Venere, Marte, Ganimede, Mercurio, Callisto.
+- **Pedine coperte (Fleet Mutiny)**: si usa il rilevamento delle informazioni nascoste; l'Impero conosce le posizioni delle navi ammutinate, il Ribelle vede solo le unità designate e quelle che rileva.
+- **Mappa ampliata**: le orbite sono circonferenze di esagoni contigui (senza zig-zag), circa il 10% più lunghe del valore delle note; all'inizio i pianeti sono piazzati a caso dove resteranno in plancia per almeno 160 turni. L'anello esterno del Sole spinge verso l'esagono dell'anello interno più allineato al Sole. Le navi nei campi di gravità di un pianeta (o a terra) si spostano con lui, quindi le orbite restano stabili. Per ora la mappa ampliata è disponibile nel Grand Tour.
 - **Prospecting**: si parte dalla Luna (a terra) o da Ceres (fermi); il carburante nelle basi costa 1 MCr a punto; l'estrazione a mano dà 0,1 t al giorno a una nave ferma sul filone. Vince chi ha più MegaCrediti allo scadere (60, 120 o 180 giorni).
 
 ## Da fare
 
-- Variante "rotta obbligata" del Grand Tour e variante a pedine coperte di The Fleet Mutiny.
+- Mappa ampliata: la versione completa fino a Plutone (152 × 53) e gli altri scenari sulla mappa ampliata.
 - IA: il Prospecting automatico dipende molto dalla fortuna nella prospezione e non ottimizza il commercio (vende solo a Ceres).
 - IA: una nave disabilitata ad alta velocità può ancora finire fuori plancia (non può manovrare).

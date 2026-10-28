@@ -11,3 +11,7 @@
 | Pianeti, cielo, pedine, frecce, icona | generati via codice (`scripts/ui/art.gd`, `assets/ui/icon.svg`) | tutta la grafica di gioco | originali |
 
 Le regole sono state normalizzate in italiano dal manuale *Updated Second Edition* (© 1973, 1981 GDW) in `RULES_IT.md`; il manuale non è incluso nel repository.
+
+## Mappa ampliata
+
+- `tools/reference/xmap/*.pdf`: *Expanded Triplanetary Map* e note di Mike Rowles (mappa non ufficiale, distribuita dall'autore per gli appassionati), usata come riferimento per `data/xmap.json`. Escluse dalla build.

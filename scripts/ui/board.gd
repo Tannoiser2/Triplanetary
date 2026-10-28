@@ -47,7 +47,7 @@ func _ready() -> void:
 	resized.connect(func(): if not _fitted: fit())
 
 func set_state(st: Dictionary) -> void:
-	var first = state.is_empty() or _map.is_empty() or st.options.get("sol_classic", false) != state.get("options", {}).get("sol_classic", false)
+	var first = state.is_empty() or _map.is_empty() or st.options.get("sol_classic", false) != state.get("options", {}).get("sol_classic", false) or st.has("planets") != state.has("planets")
 	state = st
 	if first: _build_static()
 	queue_redraw()
@@ -172,9 +172,15 @@ func add_fx(kind: String, hex: Vector2i, delay := 0.0) -> void:
 
 func _draw() -> void:
 	if state.is_empty() or _map.is_empty(): return
+	# con i pianeti in moto la mappa cambia a fine turno: si aggiorna senza ricostruire il reticolo
+	var m := Rules.map_of(state)
+	if not is_same(m, _map):
+		if m.get("xmap", false) != _map.get("xmap", false) or m.cells.size() != _map.cells.size(): _build_static()
+		else: _map = m
 	_draw_sky()
 	draw_set_transform(offset, 0.0, Vector2(zoom, zoom))
 	_draw_map_frame()
+	if _map.get("xmap", false): _draw_orbits()
 	if show_detection: _draw_detection()
 	_draw_gravity()
 	_draw_choices(true)
@@ -232,6 +238,22 @@ func _draw_detection() -> void:
 		var col := UITheme.player_color(state, b.owner)
 		draw_circle(world(body.hex), 5.0 * Hex.SQRT3, Color(col, 0.05))
 		draw_arc(world(body.hex), 5.0 * Hex.SQRT3, 0, TAU, 64, Color(col, 0.35), 1.5 / zoom)
+
+## Mappa ampliata: le orbite dei corpi in moto, con la posizione dei prossimi turni.
+func _draw_orbits() -> void:
+	var paths := Planets.orbit_paths()
+	for id in paths:
+		var b := SolarMap.body(_map, id)
+		if b.is_empty(): continue
+		var sol := world(SolarMap.body(_map, "sol").hex)
+		var rad := float(Planets.orbit_def(id).radius) * Hex.SQRT3
+		draw_arc(sol, rad, 0, TAU, 256, Color(b.color, 0.2), 1.6 / zoom, true)
+		# freccia del verso del moto e prossimo esagono
+		var p: Array = paths[id]
+		var i := int(state.planets.get(id, 0))
+		var nxt: Vector2i = p[(i + 1) % p.size()]
+		var a := world(b.hex); var c := world(nxt)
+		_arrow_head(c, (c - a).normalized(), Color(b.color, 0.55), 0.3)
 
 func _draw_gravity() -> void:
 	for h in _map.gravity:
