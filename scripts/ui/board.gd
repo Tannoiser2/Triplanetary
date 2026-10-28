@@ -185,7 +185,7 @@ func _draw() -> void:
 	# con i pianeti in moto la mappa cambia a fine turno: si aggiorna senza ricostruire il reticolo
 	var m := Rules.map_of(state)
 	if not replay.is_empty() and state.has("planets0"):
-		var ps := {"planets": state.planets0, "planet_clock": 0, "xvariant": state.get("xvariant", "xmap")}
+		var ps := {"planets": state.planets0, "planet_clock": 0, "xvariant": state.get("xvariant", "xmap"), "options": state.options}
 		m = SolarMap.get_xmap(Planets.future(ps, maxi(0, floori(replay_u) - 1)), Planets.variant(state))
 	if not is_same(m, _map):
 		if m.get("xmap", false) != _map.get("xmap", false) or m.cells.size() != _map.cells.size(): _build_static()

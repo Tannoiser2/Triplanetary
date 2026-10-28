@@ -357,6 +357,10 @@ func test_xmap_full() -> void:
 	check(st.sd.required.has("saturn") and st.sd.required.has("neptune") and not st.sd.required.has("pluto"), "Grand Tour completo: Saturno, Urano e Nettuno obbligatori")
 	check(int(st.ships[0].max_fuel) == 40, "serbatoi raddoppiati sulla mappa completa")
 	check(int(m.edge_y) < -100, "il bordo esterno è oltre Plutone")
+	var fx := Scenarios.create("grand-tour", [{"name": "A", "type": "ai"}, {"name": "B", "type": "ai"}], {"seed": 9, "map": "xmap_full", "orbits": "fast"})
+	var sat0: Vector2i = SolarMap.body(Rules.map_of(fx), "saturn").hex
+	for i in range(18): Planets.advance(fx)
+	check(Hex.distance(sat0, SolarMap.body(Rules.map_of(fx), "saturn").hex) == 2, "orbite accelerate: Saturno avanza di un esagono ogni 9 turni")
 	var x2 := Scenarios.create("retribution", [{"name": "A", "type": "ai"}, {"name": "B", "type": "ai"}], {"seed": 9, "map": "xmap"})
 	check(not SolarMap.body(Rules.map_of(x2), "clandestine").is_empty() and x2.special.size() == 6, "Clandestine e i suoi asteroidi speciali sulla mappa ampliata")
 

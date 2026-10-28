@@ -100,7 +100,7 @@ var menu_scenario := "grand-tour"
 var menu_seats: Array = []
 var menu_detail: VBoxContainer
 var menu_options := {"sol_classic": false, "liner_terra": false, "nova_allied": true, "length": 120,
-	"route": "free", "aliens": 4, "mutiny_ships": 12, "mutiny_hidden": false, "map": "classic"}
+	"route": "free", "aliens": 4, "mutiny_ships": 12, "mutiny_hidden": false, "map": "classic", "orbits": "notes"}
 
 func _ready() -> void:
 	theme = UITheme.theme()
@@ -2008,6 +2008,9 @@ func _build_menu_detail() -> void:
 		menu_detail.add_child(al)
 	if info.get("xmap", false):
 		menu_detail.add_child(_option_row("Plancia:", [["classic", "CLASSICA"], ["xmap", "AMPLIATA"], ["xmap_full", "COMPLETA FINO A PLUTONE"]], "map"))
+		if menu_options.map != "classic":
+			menu_detail.add_child(_option_row("Orbite:", [["notes", "COME NELLE NOTE"], ["fast", "ACCELERATE"]], "orbits"))
+			menu_detail.add_child(_rich("[color=#9aa7c2]%s[/color]" % ("Velocità delle note di Rowles: i pianeti esterni sono quasi fermi (Giove un esagono ogni 42 turni, Saturno 112, Urano 159, Nettuno 200, Plutone 227)." if menu_options.orbits == "notes" else "Orbite accelerate: i pianeti interni come nelle note, quelli esterni visibilmente in moto (Vesta, Ceres e Pallade ogni 6 turni, Giove 7, Saturno 9, Urano 11, Nettuno 13, Plutone 15)."), 14))
 		if menu_options.map == "xmap":
 			menu_detail.add_child(_rich("[color=#9aa7c2]Mappa ampliata di Mike Rowles (76 × 53 esagoni, scala variabile, da Mercurio a Giove): i pianeti girano attorno al Sole in senso antiorario, Mercurio di un esagono ogni 2 turni, Venere ogni 3, la Terra ogni 4, Marte ogni 5, Vesta ogni 11, Ceres e Pallade ogni 12, Giove ogni 42. Il Sole ha un anello interno a gravità tripla, Giove gravità doppia. Navi in orbita o a terra si muovono con il loro pianeta. Clandestine è su un asteroide della fascia esterna.[/color]", 14))
 		elif menu_options.map == "xmap_full":

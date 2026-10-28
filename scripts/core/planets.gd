@@ -9,6 +9,16 @@ const SAFE_TURNS := 160      # all'inizio ogni pianeta deve restare sulla planci
 
 static var _paths := {}
 
+## Orbite accelerate (opzione): i pianeti interni come nelle note, quelli esterni molto più rapidi,
+## così che anche Giove e Saturno si vedano girare nel corso di una partita.
+const FAST := {"mercury": 2, "venus": 3, "terra": 4, "mars": 5, "vesta": 6, "ceres": 6, "pallas": 6,
+	"jupiter": 7, "saturn": 9, "uranus": 11, "neptune": 13, "pluto": 15}
+
+## Turni per avanzare di un esagono (0 = fermo).
+static func period(state: Dictionary, o: Dictionary) -> int:
+	if str(state.get("options", {}).get("orbits", "notes")) == "fast": return int(FAST.get(o.id, o.period))
+	return int(o.period)
+
 ## Dati della mappa della partita (le orbite della mappa completa contengono anche quelle interne).
 static func raw(state: Dictionary = {}) -> Dictionary:
 	return SolarMap.xraw(variant(state))
@@ -51,13 +61,19 @@ static func setup(state: Dictionary) -> void:
 	for o in raw(state).orbits:
 		var p := path(o.id)
 		if o.has("behind"): continue
+		var per := period(state, o)
 		var tries := 0
-		var best := 0
+		var best := -1
 		while tries < 400:
 			tries += 1
-			var idx := 0
-			idx = (Rules.roll(state) * 997 + Rules.roll(state) * 131 + tries * 37) % p.size()
-			if _stays(o, idx, cells): best = idx; break
+			var idx := (Rules.roll(state) * 997 + Rules.roll(state) * 131 + tries * 37) % p.size()
+			if _stays(o, idx, cells, per) >= SAFE_TURNS: best = idx; break
+		if best < 0:
+			# nessun punto resta in plancia abbastanza a lungo: si sceglie quello che ci resta di più
+			var top := -1
+			for idx2 in range(p.size()):
+				var k := _stays(o, idx2, cells, per)
+				if k > top: top = k; best = idx2
 		pos[o.id] = best
 	for o in raw(state).orbits:
 		if o.has("behind"):
@@ -67,18 +83,19 @@ static func setup(state: Dictionary) -> void:
 	state.planet_clock = 0
 	state.planets0 = pos.duplicate()
 
-static func _stays(o: Dictionary, idx: int, cells: Dictionary) -> bool:
+## Per quanti turni (fino a SAFE_TURNS) il corpo, l'anello di gravità e le lune restano in plancia.
+static func _stays(o: Dictionary, idx: int, cells: Dictionary, per: int) -> int:
 	var p := path(o.id)
-	var n := 1 if int(o.period) == 0 else SAFE_TURNS / int(o.period) + 1
+	var n := 1 if per <= 0 else SAFE_TURNS / per + 1
 	for k in range(n):
 		var h: Vector2i = p[(idx + k) % p.size()]
 		for c in [h] + Hex.neighbors(h):
-			if not cells.has(c): return false
+			if not cells.has(c): return k * maxi(per, 1)
 		for m in o.get("moons", []):
 			var mh: Vector2i = h + Vector2i(int(m.offset[0]), int(m.offset[1]))
 			for c2 in [mh] + Hex.neighbors(mh):
-				if not cells.has(c2): return false
-	return true
+				if not cells.has(c2): return k * maxi(per, 1)
+	return SAFE_TURNS
 
 ## Fine turno: i corpi avanzano; ciò che è a terra o nei loro campi di gravità si sposta con loro.
 static func advance(state: Dictionary) -> void:
@@ -87,7 +104,8 @@ static func advance(state: Dictionary) -> void:
 	var before := Rules.map_of(state)
 	var moved := {}
 	for o in raw(state).orbits:
-		if int(o.period) <= 0 or int(state.planet_clock) % int(o.period) != 0: continue
+		var per := period(state, o)
+		if per <= 0 or int(state.planet_clock) % per != 0: continue
 		var p := path(o.id)
 		state.planets[o.id] = (int(state.planets[o.id]) + 1) % p.size()
 		moved[o.id] = true
@@ -95,7 +113,7 @@ static func advance(state: Dictionary) -> void:
 	var after := Rules.map_of(state)
 	var names: Array = []
 	for o in raw(state).orbits:
-		if moved.has(o.id) and int(o.period) <= 12: names.append(str(o.name))
+		if moved.has(o.id): names.append(str(o.name))
 	if not names.is_empty():
 		Rules.log_event(state, "Le orbite avanzano di un esagono: %s." % ", ".join(names), "move")
 	for o in raw(state).orbits:
@@ -126,8 +144,8 @@ static func future(state: Dictionary, t: int) -> Dictionary:
 	var out := {}
 	for o in raw(state).orbits:
 		var idx := int(state.planets.get(o.id, 0))
-		if int(o.period) > 0:
-			var per := int(o.period)
+		if period(state, o) > 0:
+			var per := period(state, o)
 			idx = (idx + (clock + t) / per - clock / per) % path(o.id).size()
 		out[o.id] = idx
 	return out

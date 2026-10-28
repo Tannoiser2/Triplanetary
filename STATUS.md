@@ -16,6 +16,7 @@ Aggiornato al 26 ottobre 2026 — riscrittura completa e tutti gli otto scenari 
 - Interruttori di visualizzazione ROTTE, DERIVA e RADAR (tasti R, D, V), ricordati fra una sessione e l'altra.
 - 95 controlli automatici in `tests/run_tests.gd`, comprese partite complete IA contro IA in tutti gli scenari.
 
+- Opzione "orbite accelerate" per vedere girare anche i pianeti esterni.
 - Varianti del manuale per Grand Tour, Nova e The Fleet Mutiny; mappe ampliate (interna e completa fino a Plutone) con i pianeti in moto, per tutti gli scenari.
 
 ## Scelte interpretative
