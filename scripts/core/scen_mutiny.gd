@@ -16,16 +16,23 @@ static func setup(state: Dictionary) -> void:
 		else:
 			for side in b.base_sides:
 				state.bases.append({"id": "base-%s-%d" % [b.id, side], "body": b.id, "side": side, "owner": "P1", "active": true, "defense": false, "fuel": true, "ordnance": true, "kind": "planetary"})
-	state.sd = {"suppressed": [], "designated": []}
-	Fleet.open_shop(state, "P1", 9999.0, "pts", ITEMS, {"max_ships": 12, "title": "Flotta imperiale",
-		"note": "Scegli esattamente 12 navi. Le 2 basi orbitali sono già comprese."})
+	state.sd = {"suppressed": [], "designated": [], "fleet": fleet_size(state)}
+	# variante del manuale: pedine coperte, il Ribelle non sa quali navi sta designando
+	if state.options.get("mutiny_hidden", false): state.rules.hidden = true
+	Fleet.open_shop(state, "P1", 9999.0, "pts", ITEMS, {"max_ships": fleet_size(state), "title": "Flotta imperiale",
+		"note": "Scegli esattamente %d navi. Le 2 basi orbitali sono già comprese." % fleet_size(state)})
 	Rules.log_event(state, "The Fleet Mutiny: l'Impero compone e schiera la sua flotta, poi i ribelli si rivelano.", "info")
+
+## Variante del manuale: flotta iniziale più grande o più piccola (12 navi di norma).
+static func fleet_size(state: Dictionary) -> int:
+	return clampi(int(state.options.get("mutiny_ships", 12)), 6, 20)
 
 static func shop_check(_state: Dictionary, _item: String) -> String:
 	return ""
 
-static func shop_confirm_check(_state: Dictionary, st: Dictionary) -> String:
-	if Fleet.cart_ships(st) != 12: return "Servono esattamente 12 navi (ora %d)." % Fleet.cart_ships(st)
+static func shop_confirm_check(state: Dictionary, st: Dictionary) -> String:
+	var n := fleet_size(state)
+	if Fleet.cart_ships(st) != n: return "Servono esattamente %d navi (ora %d)." % [n, Fleet.cart_ships(st)]
 	return ""
 
 static func shop_done(state: Dictionary, _pid: String, _cart: Dictionary, queue: Array, _spent: float) -> void:
@@ -70,6 +77,13 @@ static func confirm_picks(state: Dictionary) -> String:
 			turned += 1
 			Rules.log_event(state, "%s si ammutina! (dado %d)" % [s.name, die], "combat")
 	state.sd.designated = st.picks.duplicate()
+	if state.rules.get("hidden", false):
+		# l'Impero sa dov'erano le sue navi; il Ribelle scopre solo le unità che ha designato
+		for id in st.picks:
+			var u := Rules.ship(state, id)
+			if u.owner == "P2": state.knowledge.P1[id] = true
+			else: state.knowledge.P2[id] = true
+		Rules._update_detection(state)
 	state.setup = {}
 	state.phase = "astrogation"
 	state.turn = 1

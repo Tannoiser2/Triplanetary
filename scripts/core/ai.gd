@@ -104,7 +104,7 @@ static func _decide(state: Dictionary, s: Dictionary) -> Dictionary:
 
 static func _grand_tour(state: Dictionary, s: Dictionary) -> Dictionary:
 	var map := Rules.map_of(state)
-	var missing: Array = state.sd.required.filter(func(b): return not s.visited.has(b))
+	var missing: Array = Scenarios.gt_missing(state, s)
 	if s.landed != "":
 		if missing.is_empty(): return {}
 		return {"takeoff": true}

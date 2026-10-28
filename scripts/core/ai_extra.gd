@@ -13,7 +13,13 @@ static func setup_step(state: Dictionary) -> void:
 		"choose": _choose(state)
 		"designate":
 			var units: Array = state.ships.filter(func(s): return s.owner == "P1" and Rules.alive(s))
-			units.sort_custom(func(a, b): return int(a.combat) > int(b.combat))
+			if state.rules.get("hidden", false):
+				# pedine coperte: l'IA non sbircia, sceglie a caso
+				for i in range(units.size() - 1, 0, -1):
+					var j := (Rules.roll(state) * 7 + i) % (i + 1)
+					var tmp = units[i]; units[i] = units[j]; units[j] = tmp
+			else:
+				units.sort_custom(func(a, b): return int(a.combat) > int(b.combat))
 			for u in units.slice(0, 5): ScenMutiny.toggle_pick(state, u.id)
 			ScenMutiny.confirm_picks(state)
 
@@ -45,7 +51,10 @@ static func _shop(state: Dictionary) -> void:
 				if pts >= 8.0: wish.append("torch"); pts -= 8.0
 				elif pts >= 4.0: wish.append("corsair"); pts -= 4.0
 				else: wish.append("corvette"); pts -= 2.0
-		"fleet-mutiny": wish = ["frigate", "frigate", "frigate", "frigate", "frigate", "corsair", "corsair", "corsair", "corsair", "corsair", "corvette", "corvette"]
+		"fleet-mutiny":
+			var pool := ["frigate", "frigate", "frigate", "frigate", "frigate", "corsair", "corsair", "corsair", "corsair", "corsair", "corvette", "corvette",
+				"frigate", "corsair", "frigate", "corsair", "corvette", "frigate", "corsair", "corvette"]
+			wish = pool.slice(0, ScenMutiny.fleet_size(state))
 		"interplanetary-war":
 			if state.sd.get("mid", false):
 				var money := float(st.budget)

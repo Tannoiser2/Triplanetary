@@ -93,7 +93,8 @@ var help: Control
 var menu_scenario := "grand-tour"
 var menu_seats: Array = []
 var menu_detail: VBoxContainer
-var menu_options := {"sol_classic": false, "liner_terra": false, "nova_allied": true, "length": 120}
+var menu_options := {"sol_classic": false, "liner_terra": false, "nova_allied": true, "length": 120,
+	"route": "free", "aliens": 4, "mutiny_ships": 12, "mutiny_hidden": false}
 
 func _ready() -> void:
 	theme = UITheme.theme()
@@ -941,16 +942,18 @@ func _build_objectives(view: String) -> void:
 			var map := Rules.map_of(state)
 			for item in Scenarios.grand_tour_progress(state, s):
 				var b := SolarMap.body(map, item.id)
-				var chip := _panel(Color(b.color, 0.28) if item.done else Color("0a1530"), Color(b.color) if item.done else UITheme.LINE, 4, 5)
-				var l := UITheme.label(("✓ " if item.done else "") + b.name, 14, UITheme.TEXT if item.done else UITheme.TEXT_FAINT, UITheme.body_bold)
+				var nxt: bool = item.get("next", false)
+				var chip := _panel(Color(b.color, 0.28) if item.done else Color("0a1530"), Color(b.color) if item.done else (UITheme.ACCENT if nxt else UITheme.LINE), 4, 5)
+				var prefix: String = "✓ " if item.done else (("%d. " % item.n) if item.has("n") else "")
+				var l := UITheme.label(prefix + b.name, 14, UITheme.TEXT if item.done else (UITheme.ACCENT if nxt else UITheme.TEXT_FAINT), UITheme.body_bold)
 				l.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 				chip.add_child(l)
 				chip.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 				grid.add_child(chip)
 			objective_box.add_child(grid)
-			var done = s.visited.filter(func(v): return state.sd.required.has(v)).size()
-			var msg := "Rientra e atterra sulla Terra!" if done == state.sd.required.size() else "%d di %d corpi visitati" % [done, state.sd.required.size()]
-			objective_box.add_child(UITheme.label(msg, 14, UITheme.PHOSPHOR if done == state.sd.required.size() else UITheme.TEXT_DIM))
+			var left := Scenarios.gt_missing(state, s)
+			var msg := "Rientra e atterra sulla Terra!" if left.is_empty() else ("Rotta obbligata: prossima tappa %s" % SolarMap.body(map, left[0]).name if state.sd.has("route") else "%d di %d corpi visitati" % [state.sd.required.size() - left.size(), state.sd.required.size()])
+			objective_box.add_child(UITheme.label(msg, 14, UITheme.PHOSPHOR if left.is_empty() else UITheme.TEXT_DIM))
 		"escape":
 			objective_box.add_child(UITheme.caption("Escape"))
 			var txt := ""
@@ -1304,7 +1307,8 @@ func _build_setup_actions(me: String) -> void:
 			actions.add_child(_rich(st.get("prompt", ""), 15))
 			actions.add_child(_rich("Designate: [b]%d / 5[/b] — clicca le unità imperiali sulla plancia." % st.picks.size(), 16))
 			for id in st.picks:
-				actions.add_child(UITheme.label("• " + Rules.ship(state, id).name, 15, UITheme.ACCENT_SOFT))
+				var pk := Rules.ship(state, id)
+				actions.add_child(UITheme.label("• " + ("Unità coperta" if board._concealed(pk) else pk.name), 15, UITheme.ACCENT_SOFT))
 			var go := UITheme.primary_button("SCATENA L'AMMUTINAMENTO")
 			go.custom_minimum_size = Vector2(0, 44)
 			go.disabled = st.picks.is_empty()
@@ -1963,6 +1967,17 @@ func _build_menu_detail() -> void:
 		al.button_pressed = menu_options.nova_allied
 		al.toggled.connect(func(on): menu_options.nova_allied = on)
 		menu_detail.add_child(al)
+	if menu_scenario == "grand-tour":
+		menu_detail.add_child(_option_row("Rotta:", [["free", "LIBERA"], ["alpha", "ALFABETICA"], ["size", "PER DIMENSIONE"], ["distance", "DISTANZA DAL SOLE"]], "route"))
+	if menu_scenario == "nova":
+		menu_detail.add_child(_option_row("Corsari alieni:", [[2, "2"], [3, "3"], [4, "4"], [5, "5"], [6, "6"]], "aliens"))
+	if menu_scenario == "fleet-mutiny":
+		menu_detail.add_child(_option_row("Flotta imperiale:", [[8, "8 NAVI"], [10, "10"], [12, "12"], [14, "14"], [16, "16 NAVI"]], "mutiny_ships"))
+		var hid := CheckBox.new()
+		hid.text = "Pedine coperte: il Ribelle non sa quali navi imperiali sta designando (informazioni nascoste e rilevamento)"
+		hid.button_pressed = menu_options.mutiny_hidden
+		hid.toggled.connect(func(on): menu_options.mutiny_hidden = on)
+		menu_detail.add_child(hid)
 	if menu_scenario == "prospecting":
 		var row := HBoxContainer.new()
 		row.add_theme_constant_override("separation", 8)
@@ -1982,6 +1997,25 @@ func _build_menu_detail() -> void:
 	menu_detail.add_child(start)
 	_build_online_menu()
 
+## Riga di pulsanti a scelta singola per un'opzione dello scenario.
+func _option_row(caption: String, choices: Array, key: String) -> Control:
+	var row := HBoxContainer.new()
+	row.add_theme_constant_override("separation", 6)
+	row.add_child(UITheme.label(caption, 16))
+	for c in choices:
+		var b := Button.new()
+		b.text = c[1]
+		b.toggle_mode = true
+		b.button_pressed = str(menu_options.get(key)) == str(c[0])
+		b.pressed.connect(func(): menu_options[key] = c[0]; _build_menu_detail())
+		row.add_child(b)
+	return row
+
+func _scenario_options(opts: Dictionary) -> Dictionary:
+	var o := opts.duplicate()
+	o.length = int(o.get("length", 120))
+	return o
+
 func _start_from_menu() -> void:
 	var info := Scenarios.info(menu_scenario)
 	var seats := []
@@ -1995,8 +2029,7 @@ func _start_from_menu() -> void:
 	if seats.size() < int(info.min):
 		_toast("Servono almeno %d giocatori" % info.min, true)
 		return
-	var st := Scenarios.create(menu_scenario, seats, {"sol_classic": menu_options.sol_classic, "liner_terra": menu_options.liner_terra,
-		"nova_allied": menu_options.nova_allied, "length": int(menu_options.length)})
+	var st := Scenarios.create(menu_scenario, seats, _scenario_options(menu_options))
 	_start_game(st)
 
 # ================================================================ gioco online
@@ -2192,8 +2225,7 @@ func _online_start() -> void:
 			else: typ = "ai"
 		seats.append({"name": nm, "type": typ})
 		seat_idx.append(i if typ == "human" else -1)
-	var st := Scenarios.create(cfg.scenario, seats, {"sol_classic": cfg.options.sol_classic, "liner_terra": cfg.options.liner_terra,
-		"nova_allied": cfg.options.nova_allied, "length": int(cfg.options.length)})
+	var st := Scenarios.create(cfg.scenario, seats, _scenario_options(cfg.options))
 	for k in range(st.players.size()):
 		if seat_idx[k] >= 0: st.players[k].seat = seat_idx[k]
 	_make_online(lobby.code, int(lobby.seat), "host")

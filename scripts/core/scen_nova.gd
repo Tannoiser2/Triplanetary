@@ -96,8 +96,10 @@ static func step_done(state: Dictionary) -> void:
 		_open_bloc_shop(state, "P2")
 	elif state.setup.step == "deploy" and pid == "P2":
 		var q := []
-		var names := ["Ombra di Proxima", "Silenzio", "Fiamma Fredda", "Ultima Luce"]
-		for i in range(4): q.append({"type": "corsair", "name": "Alieno %s" % names[i], "inv": {"mine": 1}, "flags": {"nova_bomb": true}})
+		var names := ["Ombra di Proxima", "Silenzio", "Fiamma Fredda", "Ultima Luce", "Eco Nera", "Vuoto Lucente"]
+		# variante del manuale: flotta aliena più grande o più piccola (2–6 corsari, 4 di norma)
+		var n_aliens := clampi(int(state.options.get("aliens", 4)), 2, 6)
+		for i in range(n_aliens): q.append({"type": "corsair", "name": "Alieno %s" % names[i], "inv": {"mine": 1}, "flags": {"nova_bomb": true}})
 		Fleet.open_deploy(state, "P3", q, {"edge": "jupiter"}, "Ingresso dal bordo di Giove a velocità 1")
 	else:
 		_start(state)

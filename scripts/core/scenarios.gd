@@ -122,10 +122,50 @@ static func _setup_grand_tour(state: Dictionary) -> void:
 		s.visited = ["terra"]
 		state.ships.append(s)
 	state.sd = {"required": SolarMap.full_gravity_bodies(map), "finishers": []}
+	var route := gt_route(map, str(state.options.get("route", "free")))
+	if not route.is_empty():
+		state.sd.route = route
+		for s in state.ships: s.route_idx = 0
+		Rules.log_event(state, "Rotta obbligata (%s): %s, poi rientro sulla Terra." % [ROUTE_NAMES[state.options.route], ", ".join(route.map(func(b): return SolarMap.body(map, b).name))], "info")
 	Rules.log_event(state, "Grand Tour 2037: si parte dalla Terra. Visita un campo di gravità piena di ogni corpo e rientra.", "info")
+
+const ROUTE_NAMES := {"free": "libera", "alpha": "in ordine alfabetico", "size": "dal più grande al più piccolo", "distance": "in ordine di distanza dal Sole"}
+## Variante del manuale: ordine di visita annunciato prima della corsa (la Terra è partenza e arrivo).
+const ROUTE_SIZE := ["sol", "jupiter", "venus", "mars", "ganymede", "mercury", "callisto"]
+const ROUTE_DISTANCE := ["sol", "mercury", "venus", "mars", "jupiter", "ganymede", "callisto"]
+
+static func gt_route(map: Dictionary, kind: String) -> Array:
+	var bodies: Array = SolarMap.full_gravity_bodies(map).filter(func(b): return b != "terra")
+	match kind:
+		"alpha":
+			bodies.sort_custom(func(a, b): return SolarMap.body(map, a).name.naturalnocasecmp_to(SolarMap.body(map, b).name) < 0)
+			return bodies
+		"size": return ROUTE_SIZE.filter(func(b): return bodies.has(b))
+		"distance": return ROUTE_DISTANCE.filter(func(b): return bodies.has(b))
+	return []
+
+## Corpi ancora da visitare: con la rotta obbligata solo il prossimo della lista.
+static func gt_missing(state: Dictionary, s: Dictionary) -> Array:
+	if state.sd.has("route"):
+		var i := int(s.get("route_idx", 0))
+		return [] if i >= state.sd.route.size() else [state.sd.route[i]]
+	return state.sd.required.filter(func(b): return not s.visited.has(b))
+
+static func on_visits(state: Dictionary, s: Dictionary, bodies: Array) -> void:
+	if state.scenario != "grand-tour" or not state.sd.has("route"): return
+	var route: Array = state.sd.route
+	for b in bodies:
+		var i := int(s.get("route_idx", 0))
+		if i < route.size() and route[i] == b:
+			s.route_idx = i + 1
+			Rules.log_event(state, "%s tocca %s: tappa %d di %d." % [s.name, SolarMap.body(Rules.map_of(state), b).name, i + 1, route.size()], "move")
 
 static func grand_tour_progress(state: Dictionary, s: Dictionary) -> Array:
 	var out := []
+	if state.sd.has("route"):
+		var i := int(s.get("route_idx", 0))
+		for k in range(state.sd.route.size()): out.append({"id": state.sd.route[k], "done": k < i, "next": k == i, "n": k + 1})
+		return out
 	for b in state.sd.get("required", []): out.append({"id": b, "done": s.visited.has(b)})
 	return out
 
@@ -414,9 +454,7 @@ static func on_detected(state: Dictionary, viewer: String, t: Dictionary) -> voi
 
 static func on_landed(state: Dictionary, s: Dictionary) -> void:
 	if state.scenario == "grand-tour" and s.landed == "terra":
-		var done := true
-		for b in state.sd.required:
-			if not s.visited.has(b): done = false
+		var done := gt_missing(state, s).is_empty()
 		if done and not state.sd.finishers.has(s.id):
 			state.sd.finishers.append(s.id)
 			s.finished_turn = state.turn

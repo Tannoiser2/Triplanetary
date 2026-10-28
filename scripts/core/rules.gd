@@ -383,6 +383,7 @@ static func _move_ship(state: Dictionary, map: Dictionary, s: Dictionary, plot: 
 				for g in map.gravity[h]:
 					if not g.weak or plot.get("weak", false): acc.append(g.acc)
 					if not g.weak and not s.visited.has(g.body): s.visited.append(g.body)
+					if not g.weak: Scenarios.on_visits(state, s, [g.body])
 			s.pos = h; s.vel = Vector2i.ZERO; s.grav = acc
 			log_event(state, "%s decolla da %s con il booster" % [s.name, body.name], "move")
 			s.landed = ""; s.side = -1
@@ -423,6 +424,7 @@ static func _move_ship(state: Dictionary, map: Dictionary, s: Dictionary, plot: 
 	s.pos = r.dest; s.vel = r.vel; s.grav = r.grav
 	for v in r.visits:
 		if not s.visited.has(v): s.visited.append(v)
+	if not r.visits.is_empty(): Scenarios.on_visits(state, s, r.visits)
 	var note := ""
 	if r.crash != "":
 		var b3 := SolarMap.body(map, r.crash)
