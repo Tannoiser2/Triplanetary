@@ -36,6 +36,8 @@ var _press_offset := Vector2.ZERO
 var _moved := false
 var _fitted := false
 var _time := 0.0
+var _body_from := {}              # pianeti in moto: id -> posizione di partenza dell'animazione
+var _body_t := 1.0
 
 const HEX_CORNERS := [Vector2(1, 0), Vector2(0.5, 0.8660254), Vector2(-0.5, 0.8660254), Vector2(-1, 0), Vector2(-0.5, -0.8660254), Vector2(0.5, -0.8660254)]
 
@@ -163,6 +165,9 @@ func _process(delta: float) -> void:
 	var busy = anim_t < 1.0 or not fx_list.is_empty() or overlay.get("pulse", false)
 	if not fx_list.is_empty():
 		fx_list = fx_list.filter(func(f): return _time - float(f.t0) < 1.6)
+	if _body_t < 1.0:
+		_body_t = minf(1.0, _body_t + delta / 1.4)
+		busy = true
 	if busy or selected != "": queue_redraw()
 
 func add_fx(kind: String, hex: Vector2i, delay := 0.0) -> void:
@@ -176,7 +181,14 @@ func _draw() -> void:
 	var m := Rules.map_of(state)
 	if not is_same(m, _map):
 		if m.get("xmap", false) != _map.get("xmap", false) or m.cells.size() != _map.cells.size(): _build_static()
-		else: _map = m
+		else:
+			# i pianeti hanno fatto un passo: si fanno scivolare dalla vecchia alla nuova posizione
+			_body_from = {}
+			for b in m.bodies:
+				var old := SolarMap.body(_map, b.id)
+				if not old.is_empty() and old.hex != b.hex: _body_from[b.id] = world(old.hex)
+			if not _body_from.is_empty(): _body_t = 0.0
+			_map = m
 	_draw_sky()
 	draw_set_transform(offset, 0.0, Vector2(zoom, zoom))
 	_draw_map_frame()
@@ -302,9 +314,18 @@ func _draw_asteroids() -> void:
 			draw_circle(p, rad, shade)
 			draw_circle(p - Vector2(rad, rad) * 0.3, rad * 0.45, Color(base.lightened(0.35), 0.6))
 
+## Posizione disegnata di un corpo (durante lo scivolamento dopo un passo d'orbita).
+func _body_pos(b: Dictionary) -> Vector2:
+	var to := world(b.hex)
+	if _body_t >= 1.0 or not _body_from.has(b.id): return to
+	return _body_from[b.id].lerp(to, ease(_body_t, -2.0))
+
 func _draw_bodies() -> void:
 	for b in _map.bodies:
-		var c := world(b.hex)
+		var c := _body_pos(b)
+		if _body_from.has(b.id) and _body_t < 1.0:
+			# scia del passo appena fatto
+			draw_line(_body_from[b.id], c, Color(b.color, 0.5 * (1.0 - _body_t)), 0.25, true)
 		var r: float = b.radius
 		if b.id == "sol":
 			var t := 0.5 + 0.5 * sin(_time * 0.8)
@@ -341,7 +362,7 @@ func _draw_bodies() -> void:
 	# nomi
 	if zoom >= 7.0:
 		for b in _map.bodies:
-			var c2 := world(b.hex)
+			var c2 := _body_pos(b)
 			var off := Vector2(0, 1.32)
 			if b.id == "sol": off = Vector2(0, 2.7)
 			if b.radius <= 0.0: off = Vector2(0, 0.62)

@@ -92,6 +92,11 @@ static func advance(state: Dictionary) -> void:
 		moved[o.id] = true
 	if moved.is_empty(): return
 	var after := Rules.map_of(state)
+	var names: Array = []
+	for o in raw(state).orbits:
+		if moved.has(o.id) and int(o.period) <= 12: names.append(str(o.name))
+	if not names.is_empty():
+		Rules.log_event(state, "Le orbite avanzano di un esagono: %s." % ", ".join(names), "move")
 	for o in raw(state).orbits:
 		if not moved.has(o.id): continue
 		var old_h: Vector2i = SolarMap.body(before, o.id).hex
