@@ -15,3 +15,7 @@ Le regole sono state normalizzate in italiano dal manuale *Updated Second Editio
 ## Mappa ampliata
 
 - `tools/reference/xmap/*.pdf`: *Expanded Triplanetary Map* e note di Mike Rowles (mappa non ufficiale, distribuita dall'autore per gli appassionati), usata come riferimento per `data/xmap.json`. Escluse dalla build.
+
+## Illustrazioni degli scenari
+
+- `assets/ui/scenarios/*.webp`: gli otto banner degli scenari forniti da Stefano (ritagliati da un'unica tavola), usati come pulsanti nel menu.

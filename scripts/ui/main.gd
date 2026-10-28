@@ -192,6 +192,7 @@ func _build_hud() -> void:
 	hud.add_child(side)
 	var side_scroll := ScrollContainer.new()
 	side_scroll.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
+	side_scroll.vertical_scroll_mode = ScrollContainer.SCROLL_MODE_SHOW_NEVER
 	side.add_child(side_scroll)
 	var side_v := VBoxContainer.new()
 	side_v.size_flags_horizontal = Control.SIZE_EXPAND_FILL
@@ -1931,9 +1932,14 @@ func _build_menu() -> void:
 	var cover := TextureRect.new()
 	cover.texture = load("res://assets/ui/original-cover.webp")
 	cover.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
-	cover.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
-	cover.size_flags_vertical = Control.SIZE_EXPAND_FILL
+	cover.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT
+	# copertina subito sotto il titolo, a tutta larghezza della colonna
+	var tex_size: Vector2 = cover.texture.get_size()
+	cover.custom_minimum_size = Vector2(380, 380.0 * tex_size.y / maxf(1.0, tex_size.x))
 	left.add_child(cover)
+	var spacer := Control.new()
+	spacer.size_flags_vertical = Control.SIZE_EXPAND_FILL
+	left.add_child(spacer)
 	left.add_child(UITheme.label("Edizione digitale non ufficiale per uso personale.\nRegole: Updated Second Edition, GDW 1973/1981.", 13, UITheme.TEXT_FAINT))
 	# colonna centrale: scenari
 	var mid := VBoxContainer.new()
@@ -1945,14 +1951,35 @@ func _build_menu() -> void:
 	list.add_theme_constant_override("separation", 6)
 	list.name = "ScenarioList"
 	mid.add_child(list)
+	list.size_flags_vertical = Control.SIZE_EXPAND_FILL
 	for c in Scenarios.CATALOG:
+		# ogni scenario è un banner illustrato; le altezze si dividono lo spazio della colonna
 		var b := Button.new()
-		b.alignment = HORIZONTAL_ALIGNMENT_LEFT
-		b.custom_minimum_size = Vector2(0, 46)
-		b.text = "%s   ·   %s giocatori%s" % [c.title.to_upper(), c.players, "" if c.playable else "   (presto)"]
+		b.custom_minimum_size = Vector2(0, 54)
+		b.size_flags_vertical = Control.SIZE_EXPAND_FILL
+		b.clip_contents = true
+		b.tooltip_text = "%s · %s giocatori" % [c.title, c.players]
 		b.disabled = not c.playable
 		b.set_meta("id", c.id)
 		b.pressed.connect(func(): menu_scenario = c.id; _build_menu_detail())
+		var img := TextureRect.new()
+		var path := "res://assets/ui/scenarios/%s.webp" % c.id
+		if ResourceLoader.exists(path): img.texture = load(path)
+		img.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
+		img.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_COVERED
+		img.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+		img.offset_left = 3; img.offset_top = 3; img.offset_right = -3; img.offset_bottom = -3
+		img.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		img.name = "Img"
+		b.add_child(img)
+		var tag := UITheme.label("%s GIOCATORI" % c.players, 12, Color.WHITE, UITheme.body_bold)
+		tag.add_theme_color_override("font_outline_color", Color("020610"))
+		tag.add_theme_constant_override("outline_size", 5)
+		tag.set_anchors_and_offsets_preset(Control.PRESET_BOTTOM_RIGHT)
+		tag.offset_left = -130; tag.offset_top = -22; tag.offset_right = -10; tag.offset_bottom = -4
+		tag.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
+		tag.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		b.add_child(tag)
 		list.add_child(b)
 	var cont := Button.new()
 	cont.name = "Continue"
@@ -1960,7 +1987,6 @@ func _build_menu() -> void:
 	cont.pressed.connect(func():
 		var st := Persistence.load_slot("auto")
 		if not st.is_empty(): _start_game(st))
-	mid.add_child(Control.new())
 	mid.add_child(cont)
 	# colonna destra: dettaglio e equipaggi
 	var right_panel := _panel(Color("08122ae6"), UITheme.LINE, 10, 20)
@@ -1968,10 +1994,12 @@ func _build_menu() -> void:
 	cols.add_child(right_panel)
 	var rs := ScrollContainer.new()
 	rs.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
+	# niente barre di scorrimento: il contenuto è compatto (e resta comunque scorrevole con la rotella)
+	rs.vertical_scroll_mode = ScrollContainer.SCROLL_MODE_SHOW_NEVER
 	right_panel.add_child(rs)
 	menu_detail = VBoxContainer.new()
 	menu_detail.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	menu_detail.add_theme_constant_override("separation", 10)
+	menu_detail.add_theme_constant_override("separation", 7)
 	rs.add_child(menu_detail)
 
 func _build_menu_detail() -> void:
@@ -1979,17 +2007,21 @@ func _build_menu_detail() -> void:
 	var list: VBoxContainer = menu.find_child("ScenarioList", true, false)
 	for b in list.get_children():
 		var on: bool = b.get_meta("id") == menu_scenario
-		b.add_theme_stylebox_override("normal", UITheme.box(Color("2a1a10") if on else Color("10224a"), UITheme.ACCENT if on else UITheme.LINE_BRIGHT, 5, 2 if on else 1, 12))
+		b.add_theme_stylebox_override("normal", UITheme.box(Color("2a1a10") if on else Color("0a1530"), UITheme.ACCENT if on else UITheme.LINE, 6, 3 if on else 1, 0))
+		b.add_theme_stylebox_override("hover", UITheme.box(Color("1a2a50"), UITheme.ACCENT_SOFT, 6, 2, 0))
+		b.add_theme_stylebox_override("pressed", UITheme.box(Color("2a1a10"), UITheme.ACCENT, 6, 3, 0))
+		var img: TextureRect = b.get_node_or_null("Img")
+		if img != null: img.modulate = Color.WHITE if on else Color(0.72, 0.74, 0.8)
 	var cont: Button = menu.find_child("Continue", true, false)
 	var summary := Persistence.slot_summary("auto")
 	cont.visible = summary != ""
 	cont.text = "CONTINUA: " + summary.to_upper()
 	_clear(menu_detail)
-	menu_detail.add_child(UITheme.label(info.title.to_upper(), 32, UITheme.TEXT, UITheme.display))
+	menu_detail.add_child(UITheme.label(info.title.to_upper(), 26, UITheme.TEXT, UITheme.display))
 	var meta := "%s giocatori · %s" % [info.players, info.length]
 	if info.year != "": meta = info.year + " · " + meta
 	menu_detail.add_child(UITheme.label(meta, 16, UITheme.ACCENT_SOFT, UITheme.body_bold))
-	menu_detail.add_child(_rich(info.blurb, 18))
+	menu_detail.add_child(_rich(info.blurb, 16))
 	menu_detail.add_child(UITheme.caption("Equipaggi"))
 	var n_max: int = info.max
 	if menu_seats.size() != 6:
@@ -1998,7 +2030,7 @@ func _build_menu_detail() -> void:
 	var grid := GridContainer.new()
 	grid.columns = 3
 	grid.add_theme_constant_override("h_separation", 10)
-	grid.add_theme_constant_override("v_separation", 8)
+	grid.add_theme_constant_override("v_separation", 5)
 	menu_detail.add_child(grid)
 	for i in range(n_max):
 		var seat: Dictionary = menu_seats[i]
@@ -2010,7 +2042,7 @@ func _build_menu_detail() -> void:
 		var name_edit := LineEdit.new()
 		name_edit.placeholder_text = "%s %d" % [side_name, i + 1] if side_name == "Pilota" else side_name
 		name_edit.text = seat.name
-		name_edit.custom_minimum_size = Vector2(190, 38)
+		name_edit.custom_minimum_size = Vector2(190, 34)
 		name_edit.text_changed.connect(func(t): seat.name = t)
 		grid.add_child(name_edit)
 		var opt := OptionButton.new()
@@ -2020,12 +2052,13 @@ func _build_menu_detail() -> void:
 		var idx: int = {"human": 0, "ai": 1, "none": 2}.get(seat.type, 0)
 		if i < int(info.min) and seat.type == "none": seat.type = "ai"; idx = 1
 		opt.select(mini(idx, opt.item_count - 1))
-		opt.custom_minimum_size = Vector2(130, 38)
+		opt.custom_minimum_size = Vector2(130, 34)
 		opt.item_selected.connect(func(k): seat.type = ["human", "ai", "none"][k])
 		grid.add_child(opt)
 	menu_detail.add_child(UITheme.caption("Opzioni"))
 	var sol := CheckBox.new()
-	sol.text = "Sol classico: un solo anello di gravità (invece delle frecce doppie della mappa)"
+	sol.text = "Sol classico: un solo anello di gravità"
+	sol.tooltip_text = "Un solo anello di frecce attorno al Sole, come sulla plancia GDW originale, invece delle frecce doppie della mappa A4."
 	sol.button_pressed = menu_options.sol_classic
 	sol.toggled.connect(func(on): menu_options.sol_classic = on)
 	menu_detail.add_child(sol)
@@ -2042,14 +2075,14 @@ func _build_menu_detail() -> void:
 		al.toggled.connect(func(on): menu_options.nova_allied = on)
 		menu_detail.add_child(al)
 	if info.get("xmap", false):
-		menu_detail.add_child(_option_row("Plancia:", [["classic", "CLASSICA"], ["xmap", "AMPLIATA"], ["xmap_full", "COMPLETA FINO A PLUTONE"]], "map"))
+		var prow := _option_row("Plancia:", [["classic", "CLASSICA"], ["xmap", "AMPLIATA"], ["xmap_full", "FINO A PLUTONE"]], "map", "Classica: la plancia del gioco.\nAmpliata: mappa di Mike Rowles da Mercurio a Giove (76 × 53), pianeti in orbita antioraria, Sole a gravità tripla nell'anello interno, Giove doppia.\nFino a Plutone: mappa completa (152 × 53) con Saturno, Urano, Nettuno e le lune; serbatoi raddoppiati; nel Grand Tour anche Saturno, Urano e Nettuno.")
+		menu_detail.add_child(prow)
 		if menu_options.map != "classic":
-			menu_detail.add_child(_option_row("Orbite:", [["notes", "COME NELLE NOTE"], ["fast", "ACCELERATE"]], "orbits"))
-			menu_detail.add_child(_rich("[color=#9aa7c2]%s[/color]" % ("Velocità delle note di Rowles: i pianeti esterni sono quasi fermi (Giove un esagono ogni 42 turni, Saturno 112, Urano 159, Nettuno 200, Plutone 227)." if menu_options.orbits == "notes" else "Orbite accelerate: i pianeti interni come nelle note, quelli esterni visibilmente in moto (Vesta, Ceres e Pallade ogni 6 turni, Giove 7, Saturno 9, Urano 11, Nettuno 13, Plutone 15)."), 14))
+			menu_detail.add_child(_option_row("Orbite:", [["notes", "COME NELLE NOTE"], ["fast", "ACCELERATE"]], "orbits", "Come nelle note: Mercurio 1 esagono ogni 2 turni, Venere 3, Terra 4, Marte 5, Vesta 11, Ceres e Pallade 12, Giove 42, Saturno 112, Urano 159, Nettuno 200, Plutone 227.\nAccelerate: pianeti interni uguali, Vesta, Ceres e Pallade 6, Giove 7, Saturno 9, Urano 11, Nettuno 13, Plutone 15."))
 		if menu_options.map == "xmap":
-			menu_detail.add_child(_rich("[color=#9aa7c2]Mappa ampliata di Mike Rowles (76 × 53 esagoni, scala variabile, da Mercurio a Giove): i pianeti girano attorno al Sole in senso antiorario, Mercurio di un esagono ogni 2 turni, Venere ogni 3, la Terra ogni 4, Marte ogni 5, Vesta ogni 11, Ceres e Pallade ogni 12, Giove ogni 42. Il Sole ha un anello interno a gravità tripla, Giove gravità doppia. Navi in orbita o a terra si muovono con il loro pianeta. Clandestine è su un asteroide della fascia esterna.[/color]", 14))
+			pass
 		elif menu_options.map == "xmap_full":
-			menu_detail.add_child(_rich("[color=#9aa7c2]Mappa completa di Mike Rowles (152 × 53 esagoni): oltre al sistema interno, Saturno con Titano, Urano, Nettuno con Tritone e Plutone con Caronte. I pianeti esterni si muovono lentissimi (Saturno un esagono ogni 112 turni). Per coprire le distanze i serbatoi di tutte le navi sono raddoppiati; nel Grand Tour vanno visitati anche Saturno, Urano e Nettuno.[/color]", 14))
+			pass
 	if menu_scenario == "grand-tour":
 		menu_detail.add_child(_option_row("Rotta:", [["free", "LIBERA"], ["alpha", "ALFABETICA"], ["size", "PER DIMENSIONE"], ["distance", "DISTANZA DAL SOLE"]], "route"))
 	if menu_scenario == "nova":
@@ -2074,14 +2107,22 @@ func _build_menu_detail() -> void:
 			row.add_child(b)
 		menu_detail.add_child(row)
 	var start := UITheme.primary_button("INIZIA LA MISSIONE ▸")
-	start.custom_minimum_size = Vector2(0, 52)
+	start.custom_minimum_size = Vector2(0, 46)
 	start.add_theme_font_size_override("font_size", 20)
 	start.pressed.connect(_start_from_menu)
-	menu_detail.add_child(start)
-	_build_online_menu()
+	var go_row := HBoxContainer.new()
+	go_row.add_theme_constant_override("separation", 10)
+	start.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	go_row.add_child(start)
+	var online_btn := Button.new()
+	online_btn.text = "GIOCA ONLINE ▸"
+	online_btn.custom_minimum_size = Vector2(190, 46)
+	online_btn.pressed.connect(_open_online_dialog)
+	go_row.add_child(online_btn)
+	menu_detail.add_child(go_row)
 
 ## Riga di pulsanti a scelta singola per un'opzione dello scenario.
-func _option_row(caption: String, choices: Array, key: String) -> Control:
+func _option_row(caption: String, choices: Array, key: String, tip := "") -> Control:
 	var row := HBoxContainer.new()
 	row.add_theme_constant_override("separation", 6)
 	row.add_child(UITheme.label(caption, 16))
@@ -2091,6 +2132,7 @@ func _option_row(caption: String, choices: Array, key: String) -> Control:
 		b.toggle_mode = true
 		b.button_pressed = str(menu_options.get(key)) == str(c[0])
 		b.pressed.connect(func(): menu_options[key] = c[0]; _build_menu_detail())
+		b.tooltip_text = tip
 		row.add_child(b)
 	return row
 
@@ -2245,13 +2287,24 @@ func _process(delta: float) -> void:
 
 # ================================================================ gioco online
 
-func _build_online_menu() -> void:
-	menu_detail.add_child(UITheme.caption("Gioca online", UITheme.ACCENT))
-	menu_detail.add_child(_rich("[color=#9aa7c2]Chi crea la stanza usa gli equipaggi qui sopra: il primo posto [b]UMANO[/b] è il suo, gli altri posti UMANO sono per gli amici (se restano vuoti li gioca l'IA). Gli amici scrivono il codice di 4 lettere e premono ENTRA.[/color]", 15))
+func _open_online_dialog() -> void:
+	if dialog != null: dialog.queue_free()
+	dialog = _modal(600)
+	var card: VBoxContainer = dialog.get_meta("card")
+	_build_online_menu(card)
+	var close := Button.new(); close.text = "CHIUDI"; close.custom_minimum_size = Vector2(0, 40)
+	close.pressed.connect(func(): dialog.queue_free(); dialog = null)
+	card.add_child(close)
+	add_child(dialog)
+
+func _build_online_menu(target: VBoxContainer) -> void:
+	target.add_child(UITheme.label("GIOCA ONLINE", 26, UITheme.ACCENT, UITheme.display))
+	var oh := _rich("[color=#9aa7c2]Chi crea la stanza usa gli equipaggi scelti nel menu: il primo posto [b]UMANO[/b] è il suo, gli altri posti UMANO sono per gli amici (se restano vuoti li gioca l'IA). Gli amici scrivono il codice di 4 lettere e premono ENTRA.[/color]", 15)
+	target.add_child(oh)
 	var sess := net.load_session()
 	var row := HBoxContainer.new()
 	row.add_theme_constant_override("separation", 8)
-	menu_detail.add_child(row)
+	target.add_child(row)
 	var name_edit := LineEdit.new()
 	name_edit.placeholder_text = "Il tuo nome"
 	name_edit.text = str(sess.get("name", ""))
@@ -2265,7 +2318,7 @@ func _build_online_menu() -> void:
 	row.add_child(create)
 	var row2 := HBoxContainer.new()
 	row2.add_theme_constant_override("separation", 8)
-	menu_detail.add_child(row2)
+	target.add_child(row2)
 	var code_edit := LineEdit.new()
 	code_edit.placeholder_text = "CODICE"
 	code_edit.max_length = 4
@@ -2282,7 +2335,7 @@ func _build_online_menu() -> void:
 	row2.add_child(join)
 	var status := UITheme.label("", 15, UITheme.WARN)
 	status.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-	menu_detail.add_child(status)
+	target.add_child(status)
 	var buttons := [create, join]
 	var nm := func() -> String:
 		var s: String = name_edit.text.strip_edges()
@@ -2320,7 +2373,7 @@ func _build_online_menu() -> void:
 			var err: String = await _online_join(str(sess.room), me)
 			if err != "": net.remember_room("")
 			status.text = err)
-		menu_detail.add_child(back)
+		target.add_child(back)
 
 ## Crea la stanza con la configurazione del menu. Restituisce "" o un messaggio d'errore.
 func _online_create(me: String) -> String:
@@ -2358,6 +2411,7 @@ func _online_join(c: String, me: String) -> String:
 	return ""
 
 func _show_lobby() -> void:
+	if dialog != null: dialog.queue_free(); dialog = null
 	if lobby_box != null: lobby_box.queue_free()
 	lobby_box = _modal(560)
 	var card: VBoxContainer = lobby_box.get_meta("card")
