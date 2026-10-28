@@ -32,6 +32,7 @@ func _init() -> void:
 	test_new_scenarios()
 	test_variants()
 	test_xmap()
+	test_xmap_full()
 	if failures == 0: print("OK: %d controlli" % count)
 	else: printerr("%d/%d controlli falliti" % [failures, count])
 	quit(1 if failures else 0)
@@ -344,3 +345,15 @@ func test_xmap() -> void:
 	check(s.pos == t2, "la nave a terra si muove con il pianeta")
 	var back := Persistence.from_json(Persistence.to_json(st))
 	check(back.planets == st.planets, "salvataggio delle posizioni dei pianeti")
+
+func test_xmap_full() -> void:
+	var st := Scenarios.create("grand-tour", [{"name": "A", "type": "ai"}, {"name": "B", "type": "ai"}], {"seed": 9, "map": "xmap_full"})
+	var m := Rules.map_of(st)
+	check(m.cells.size() > 8000, "mappa completa: 152 x 53 esagoni")
+	for id in ["saturn", "uranus", "neptune", "pluto", "titan", "triton", "charon", "clandestine"]:
+		check(not SolarMap.body(m, id).is_empty(), "mappa completa: c'è %s" % id)
+	check(st.sd.required.has("saturn") and st.sd.required.has("neptune") and not st.sd.required.has("pluto"), "Grand Tour completo: Saturno, Urano e Nettuno obbligatori")
+	check(int(st.ships[0].max_fuel) == 40, "serbatoi raddoppiati sulla mappa completa")
+	check(int(m.edge_y) < -100, "il bordo esterno è oltre Plutone")
+	var x2 := Scenarios.create("retribution", [{"name": "A", "type": "ai"}, {"name": "B", "type": "ai"}], {"seed": 9, "map": "xmap"})
+	check(not SolarMap.body(Rules.map_of(x2), "clandestine").is_empty() and x2.special.size() == 6, "Clandestine e i suoi asteroidi speciali sulla mappa ampliata")

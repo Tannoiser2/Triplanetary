@@ -453,7 +453,8 @@ func _auto_select(who: String) -> void:
 	if key == _focus_key: return
 	_focus_key = key
 	if state.phase == "setup" and state.scenario == "lateral-7":
-		board.center_on(SolarMap.body(Rules.map_of(state), "ceres").hex + Vector2i(8, 1), 17.0)
+		var lm := Rules.map_of(state)
+		board.center_on(SolarMap.body(lm, "ceres").hex + Vector2i(8, 1) if not lm.get("xmap", false) else SolarMap.body(lm, "clandestine").hex, 17.0)
 		return
 	if state.phase == "setup":
 		if state.setup.get("step", "") == "deploy":
@@ -1816,7 +1817,7 @@ Mine (10 t) e testate (20 t) ereditano il vettore della nave, che deve cambiare 
 In Nova, Retribution, The Fleet Mutiny, Interplanetary War e Prospecting la partita comincia con la preparazione: scelte nel pannello a destra, acquisti con i pulsanti + e −, poi lo schieramento cliccando gli esagoni evidenziati in verde (il pulsante cambia il verso delle orbite). Nella guerra interplanetaria il cantiere si apre durante l'astrogazione o il rifornimento; in Fleet Mutiny, in fase di combattimento, una nave in orbita sopra un lato della Terra può sopprimerlo.
 
 [b][color=#ff9a5c]Mappa ampliata[/color][/b]
-Nel Grand Tour si può scegliere la mappa ampliata di Mike Rowles: i pianeti girano attorno al Sole in senso antiorario (il cerchio colorato è l'orbita, la freccia indica il prossimo esagono). Le navi a terra o nei campi di gravità di un pianeta si spostano con lui. L'anello interno del Sole ha gravità tripla, quello di Giove doppia: avvicinarsi al Sole richiede molta prudenza.
+In ogni scenario si può scegliere la mappa ampliata di Mike Rowles (interna fino a Giove o completa fino a Plutone): i pianeti girano attorno al Sole in senso antiorario (il cerchio colorato è l'orbita, la freccia indica il prossimo esagono). Le navi a terra o nei campi di gravità di un pianeta si spostano con lui. L'anello interno del Sole ha gravità tripla, quello di Giove doppia: avvicinarsi al Sole richiede molta prudenza.
 
 [b][color=#ff9a5c]Gioco online[/color][/b]
 Dal menu: CREA UNA STANZA e comunica il codice di 4 lettere; gli amici scrivono il codice e premono ENTRA. Se cade la linea si rientra dallo stesso menu.
@@ -1974,9 +1975,11 @@ func _build_menu_detail() -> void:
 		al.toggled.connect(func(on): menu_options.nova_allied = on)
 		menu_detail.add_child(al)
 	if info.get("xmap", false):
-		menu_detail.add_child(_option_row("Plancia:", [["classic", "CLASSICA"], ["xmap", "AMPLIATA · PIANETI IN MOTO"]], "map"))
+		menu_detail.add_child(_option_row("Plancia:", [["classic", "CLASSICA"], ["xmap", "AMPLIATA"], ["xmap_full", "COMPLETA FINO A PLUTONE"]], "map"))
 		if menu_options.map == "xmap":
-			menu_detail.add_child(_rich("[color=#9aa7c2]Mappa ampliata di Mike Rowles (76 × 53 esagoni, scala variabile): i pianeti girano attorno al Sole in senso antiorario, Mercurio di un esagono ogni 2 turni, Venere ogni 3, la Terra ogni 4, Marte ogni 5, Vesta ogni 11, Ceres e Pallade ogni 12; Giove resta fermo. Il Sole ha un anello interno a gravità tripla, Giove gravità doppia. Navi in orbita o a terra si muovono con il loro pianeta.[/color]", 14))
+			menu_detail.add_child(_rich("[color=#9aa7c2]Mappa ampliata di Mike Rowles (76 × 53 esagoni, scala variabile, da Mercurio a Giove): i pianeti girano attorno al Sole in senso antiorario, Mercurio di un esagono ogni 2 turni, Venere ogni 3, la Terra ogni 4, Marte ogni 5, Vesta ogni 11, Ceres e Pallade ogni 12, Giove ogni 42. Il Sole ha un anello interno a gravità tripla, Giove gravità doppia. Navi in orbita o a terra si muovono con il loro pianeta. Clandestine è su un asteroide della fascia esterna.[/color]", 14))
+		elif menu_options.map == "xmap_full":
+			menu_detail.add_child(_rich("[color=#9aa7c2]Mappa completa di Mike Rowles (152 × 53 esagoni): oltre al sistema interno, Saturno con Titano, Urano, Nettuno con Tritone e Plutone con Caronte. I pianeti esterni si muovono lentissimi (Saturno un esagono ogni 112 turni). Per coprire le distanze i serbatoi di tutte le navi sono raddoppiati; nel Grand Tour vanno visitati anche Saturno, Urano e Nettuno.[/color]", 14))
 	if menu_scenario == "grand-tour":
 		menu_detail.add_child(_option_row("Rotta:", [["free", "LIBERA"], ["alpha", "ALFABETICA"], ["size", "PER DIMENSIONE"], ["distance", "DISTANZA DAL SOLE"]], "route"))
 	if menu_scenario == "nova":

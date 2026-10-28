@@ -141,8 +141,9 @@ static func spots(state: Dictionary) -> Dictionary:
 						if Hex.distance(h, SolarMap.body(map, bid).hex) <= radius: ok = true; break
 				if ok and _sep_ok(state, h, z): out[h] = {"mode": "space", "body": "", "side": -1}
 		if z.get("edge", "") == "jupiter":
+			var ey := int(map.get("edge_y", 0))
 			for h in map.cells:
-				if h.y == 0: out[h] = {"mode": "edge", "body": "", "side": -1}
+				if h.y == ey: out[h] = {"mode": "edge", "body": "", "side": -1}
 		for bid in z.get("stop_at", []):
 			var b3 := SolarMap.body(map, bid)
 			out[b3.hex] = {"mode": "stop", "body": bid, "side": -1}
@@ -189,6 +190,7 @@ static func place(state: Dictionary, hex: Vector2i) -> String:
 			s.pos = hex
 			s.vel = Vector2i(0, 1) if st.get("ccw", true) else Vector2i(-1, 1)
 			s.history = [{"turn": 0, "from": hex - s.vel, "to": hex, "burns": [], "note": "ingresso"}]
+	Scenarios.adapt_ship(state, s)
 	state.ships.append(s)
 	for p in state.players:
 		if state.knowledge.has(p.id) and p.id != s.owner and not state.rules.get("hidden", false): state.knowledge[p.id][s.id] = true

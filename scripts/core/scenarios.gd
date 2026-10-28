@@ -5,31 +5,31 @@ extends RefCounted
 const PLAYER_COLORS := ["#ff8a3d", "#3fb6ff", "#43e08f", "#f2d94e", "#e46bff", "#e8e8e8"]
 
 const CATALOG := [
-	{"id": "grand-tour", "title": "Grand Tour", "year": "2037 AD", "players": "2–6", "min": 2, "max": 6, "length": "Corsa", "xmap": true,
-		"playable": true, "ai": true,
+	{"id": "grand-tour", "title": "Grand Tour", "year": "2037 AD", "players": "2–6", "min": 2, "max": 6, "length": "Corsa",
+		"playable": true, "ai": true, "xmap": true,
 		"blurb": "Gara attorno al Sistema Solare: attraversa un campo di gravità piena di ogni corpo e torna ad atterrare sulla Terra. Carburante gratuito solo su Terra, Venere, Marte e Callisto.",
 		"sides": ["Pilota", "Pilota", "Pilota", "Pilota", "Pilota", "Pilota"]},
 	{"id": "escape", "title": "Escape", "year": "", "players": "2", "min": 2, "max": 2, "length": "Breve",
-		"playable": true, "ai": true,
+		"playable": true, "ai": true, "xmap": true,
 		"blurb": "Tre trasporti dei Pellegrini lasciano la Terra: uno solo porta i fuggitivi. Devono uscire oltre Giove prima che gli Enforcers li catturino.",
 		"sides": ["Pellegrini", "Enforcers"]},
 	{"id": "lateral-7", "title": "Lateral 7", "year": "", "players": "2", "min": 2, "max": 2, "length": "Breve",
-		"playable": true, "ai": true,
+		"playable": true, "ai": true, "xmap": true,
 		"blurb": "Pirati nascosti fra gli asteroidi, falsi bersagli e un dreadnought di guardia: riusciranno a rapire i passeggeri della nave di linea diretta a Ganimede?",
 		"sides": ["Pirati", "Marina"]},
-	{"id": "nova", "title": "Nova", "year": "", "players": "3", "min": 3, "max": 3, "length": "Breve", "playable": true, "ai": true,
+	{"id": "nova", "title": "Nova", "year": "", "players": "3", "min": 3, "max": 3, "length": "Breve", "playable": true, "ai": true, "xmap": true,
 		"blurb": "EastBloc e WestBloc si spartiscono Terra e Luna e comprano 50 punti di flotta; quattro corsari alieni con bombe Nova entrano dal bordo di Giove: se uno entra in orbita attorno al Sole, il sistema è perduto.",
 		"sides": ["WestBloc", "EastBloc", "Alieni"]},
-	{"id": "retribution", "title": "Retribution", "year": "", "players": "2", "min": 2, "max": 2, "length": "Breve", "playable": true, "ai": true,
+	{"id": "retribution", "title": "Retribution", "year": "", "players": "2", "min": 2, "max": 2, "length": "Breve", "playable": true, "ai": true, "xmap": true,
 		"blurb": "Dieci corvette dei Figli della Libertà, una alla volta: a Clandestine per formare la Flotta della Libertà o in picchiata sulla Terra. Gli Enforcers devono sopravvivere.",
 		"sides": ["Figli della Libertà", "Enforcers"]},
-	{"id": "fleet-mutiny", "title": "The Fleet Mutiny", "year": "", "players": "2", "min": 2, "max": 2, "length": "Breve", "playable": true, "ai": true,
+	{"id": "fleet-mutiny", "title": "The Fleet Mutiny", "year": "", "players": "2", "min": 2, "max": 2, "length": "Breve", "playable": true, "ai": true, "xmap": true,
 		"blurb": "L'Impero schiera dodici navi e due basi orbitali; il Ribelle ne designa cinque, che si ammutinano con 5 su 6. Vince chi controlla i lati della Terra.",
 		"sides": ["Impero", "Ribelli"]},
-	{"id": "interplanetary-war", "title": "Interplanetary War", "year": "", "players": "2", "min": 2, "max": 2, "length": "Lunga", "playable": true, "ai": true,
+	{"id": "interplanetary-war", "title": "Interplanetary War", "year": "", "players": "2", "min": 2, "max": 2, "length": "Lunga", "playable": true, "ai": true, "xmap": true,
 		"blurb": "La Terra (1600 MCr) contro le colonie ribelli (1000 MCr): flotte, testate nucleari, produzione delle basi e crediti da trasportare. I ribelli vincono devastando tre lati della Terra e uno della Luna.",
 		"sides": ["Terra", "Ribelli"]},
-	{"id": "prospecting", "title": "Prospecting", "year": "", "players": "2–6", "min": 2, "max": 6, "length": "Lunga", "playable": true, "ai": true,
+	{"id": "prospecting", "title": "Prospecting", "year": "", "players": "2–6", "min": 2, "max": 6, "length": "Lunga", "playable": true, "ai": true, "xmap": true,
 		"blurb": "Corsa all'oro nella Fascia con 25 MCr a testa: prospetta gli asteroidi a velocità 1, installa miniere automatiche, vendi minerale e schegge CT a Ceres e Luna. Vince il più ricco.",
 		"sides": ["Cercatore", "Cercatore", "Cercatore", "Cercatore", "Cercatore", "Cercatore"]},
 ]
@@ -42,12 +42,14 @@ static func info(id: String) -> Dictionary:
 ## seats: [{name, type:"human"|"ai"}]  options: {sol_classic, liner_terra, seed}
 static func create(id: String, seats: Array, options: Dictionary = {}) -> Dictionary:
 	var state := _base_state(id, seats, options)
-	if options.get("map", "classic") == "xmap" and info(id).get("xmap", false):
+	var mopt := str(options.get("map", "classic"))
+	if mopt in ["xmap", "xmap_full"]:
 		# mappa ampliata di Mike Rowles: i pianeti partono in posizioni casuali e si muovono
+		state.xvariant = mopt
 		Planets.setup(state)
 		var xm := Rules.map_of(state)
 		state.asteroids = xm.asteroids.duplicate()
-		state.special = []
+		state.special = xm.special_asteroids.duplicate()
 	match id:
 		"grand-tour": _setup_grand_tour(state)
 		"escape": _setup_escape(state)
@@ -57,8 +59,19 @@ static func create(id: String, seats: Array, options: Dictionary = {}) -> Dictio
 		"fleet-mutiny": ScenMutiny.setup(state)
 		"interplanetary-war": ScenWar.setup(state)
 		"prospecting": ScenProspecting.setup(state)
+	for s in state.ships: adapt_ship(state, s)
 	Rules._update_detection(state)
 	return state
+
+## Sulla mappa completa le distanze sono enormi: serbatoi moltiplicati (Map Notes: "may be necessary
+## to change the fuel capacity for all ships").
+static func adapt_ship(state: Dictionary, s: Dictionary) -> void:
+	if not state.has("xvariant") or s.get("fuel_adapted", false) or s.infinite_fuel: return
+	var m := int(SolarMap.xraw(state.xvariant).get("fuel_mult", 1))
+	s.fuel_adapted = true
+	if m <= 1: return
+	s.max_fuel = int(s.max_fuel) * m
+	s.fuel = int(s.fuel) * m
 
 static func _base_state(id: String, seats: Array, options: Dictionary) -> Dictionary:
 	var players := []
@@ -138,8 +151,8 @@ static func _setup_grand_tour(state: Dictionary) -> void:
 
 const ROUTE_NAMES := {"free": "libera", "alpha": "in ordine alfabetico", "size": "dal più grande al più piccolo", "distance": "in ordine di distanza dal Sole"}
 ## Variante del manuale: ordine di visita annunciato prima della corsa (la Terra è partenza e arrivo).
-const ROUTE_SIZE := ["sol", "jupiter", "venus", "mars", "ganymede", "mercury", "callisto"]
-const ROUTE_DISTANCE := ["sol", "mercury", "venus", "mars", "jupiter", "ganymede", "callisto"]
+const ROUTE_SIZE := ["sol", "jupiter", "saturn", "uranus", "neptune", "venus", "mars", "ganymede", "mercury", "callisto"]
+const ROUTE_DISTANCE := ["sol", "mercury", "venus", "mars", "jupiter", "ganymede", "callisto", "saturn", "uranus", "neptune"]
 
 static func gt_route(map: Dictionary, kind: String) -> Array:
 	var bodies: Array = SolarMap.full_gravity_bodies(map).filter(func(b): return b != "terra")
@@ -472,7 +485,7 @@ static func on_landed(state: Dictionary, s: Dictionary) -> void:
 	check_victory(state)
 
 static func on_exit_map(state: Dictionary, s: Dictionary, r: Dictionary) -> bool:
-	if state.scenario == "escape" and s.owner == "P1" and r.dest.y < 0:
+	if state.scenario == "escape" and s.owner == "P1" and r.dest.y < int(Rules.map_of(state).get("edge_y", 0)):
 		s.escaped = true
 		s.exit_speed = Hex.length(r.vel)
 		Rules.log_event(state, "%s supera il bordo oltre Giove con %d carburante a velocità %d" % [s.name, s.fuel, s.exit_speed], "victory")

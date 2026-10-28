@@ -345,7 +345,7 @@ static func _search(state: Dictionary, s: Dictionary, goal: Callable, heuristic:
 			var mt := map
 			if moving:
 				var tt := int(node.turns)
-				if not tmaps.has(tt): tmaps[tt] = SolarMap.get_xmap(Planets.future(state, tt))
+				if not tmaps.has(tt): tmaps[tt] = SolarMap.get_xmap(Planets.future(state, tt), Planets.variant(state))
 				mt = tmaps[tt]
 			var r := Rules.simulate(mt, node.pos, node.vel, [node.g], bv, false, state.asteroids, state.special, s.access_special)
 			if r.crash != "" or r.special: continue
@@ -455,7 +455,7 @@ static func _extract(nodes: Array, idx: int) -> Dictionary:
 ## raggiunto prima ma con meno carburante non deve oscurarne uno più lento e più parsimonioso.
 static func _key(n: Dictionary) -> int:
 	var p: Vector2i = n.pos; var v: Vector2i = n.vel; var g: Vector2i = n.g
-	var k := (((((p.x + 64) * 256 + (p.y + 64)) * 32 + (v.x + 16)) * 32 + (v.y + 16)) * 32 + (g.x + 16)) * 32 + (g.y + 16)
+	var k := (((((p.x + 256) * 512 + (p.y + 256)) * 32 + (v.x + 16)) * 32 + (v.y + 16)) * 32 + (g.x + 16)) * 32 + (g.y + 16)
 	return k * 8 + clampi(int(n.fuel), 0, 7)
 
 static func _push(heap: Array, item: Array) -> void:
@@ -585,16 +585,17 @@ static func search_stop(state: Dictionary, s: Dictionary, hex: Vector2i, budget:
 
 ## Uscita dal bordo oltre Giove (righe r < 0), preferibilmente con carburante per fermarsi.
 static func search_exit(state: Dictionary, s: Dictionary, budget: int) -> Dictionary:
+	var ey := int(Rules.map_of(state).get("edge_y", 0))
 	var goal := func(n: Dictionary, r: Dictionary) -> bool:
-		return r.offmap and r.dest.y < 0 and int(n.fuel) >= Hex.length(r.vel) + 1
+		return r.offmap and r.dest.y < ey and int(n.fuel) >= Hex.length(r.vel) + 1
 	var h := func(n: Dictionary) -> float:
 		var vy: int = n.vel.y + n.g.y
-		for t in range(0, 40):
-			if n.pos.y + vy * t - t * (t + 1) / 2 < 0: return float(t)
-		return 40.0
+		for t in range(0, 60):
+			if n.pos.y + vy * t - t * (t + 1) / 2 < ey: return float(t)
+		return 60.0
 	var plan := _search(state, s, goal, h, budget, 0, true)
 	if not plan.is_empty(): return plan
-	var goal2 := func(_n: Dictionary, r: Dictionary) -> bool: return r.offmap and r.dest.y < 0
+	var goal2 := func(_n: Dictionary, r: Dictionary) -> bool: return r.offmap and r.dest.y < ey
 	return _search(state, s, goal2, h, budget, 0, false)
 
 ## Intercetta un bersaglio che si suppone prosegua per inerzia.

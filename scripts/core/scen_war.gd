@@ -56,6 +56,7 @@ static func shop_done(state: Dictionary, pid: String, cart: Dictionary, queue: A
 				var b := _home_base(state, pid)
 				Scenarios._land(s, map, h, int(b.side))
 			s.resupplied_seg = Rules.seg_key(state)
+			Scenarios.adapt_ship(state, s)
 			state.ships.append(s)
 		return
 	var left := (1600.0 if pid == "P1" else 1000.0) - spent

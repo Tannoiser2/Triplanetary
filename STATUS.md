@@ -14,7 +14,7 @@ Aggiornato al 26 ottobre 2026 — riscrittura completa e tutti gli otto scenari 
 - Interruttori di visualizzazione ROTTE, DERIVA e RADAR (tasti R, D, V), ricordati fra una sessione e l'altra.
 - 95 controlli automatici in `tests/run_tests.gd`, comprese partite complete IA contro IA in tutti gli scenari.
 
-- Varianti del manuale per Grand Tour, Nova e The Fleet Mutiny; mappa ampliata con i pianeti in moto per il Grand Tour.
+- Varianti del manuale per Grand Tour, Nova e The Fleet Mutiny; mappe ampliate (interna e completa fino a Plutone) con i pianeti in moto, per tutti gli scenari.
 
 ## Scelte interpretative
 
@@ -31,11 +31,11 @@ Aggiornato al 26 ottobre 2026 — riscrittura completa e tutti gli otto scenari 
 - **Interplanetary War**: gli ordigni comprati restano in deposito sul mondo di casa e le navi li caricano in base; le basi orbitali comprate in partita compaiono in orbita attorno al mondo di casa. Mercurio, Ceres e Clandestine non hanno basi attive. La Terra vince appena la flotta ribelle è tutta distrutta.
 - **Rotta obbligata**: la Terra è partenza e arrivo, le altre sette tappe vanno toccate nell'ordine annunciato; un corpo toccato fuori ordine non conta. Ordine per dimensione: Sol, Giove, Venere, Marte, Ganimede, Mercurio, Callisto.
 - **Pedine coperte (Fleet Mutiny)**: si usa il rilevamento delle informazioni nascoste; l'Impero conosce le posizioni delle navi ammutinate, il Ribelle vede solo le unità designate e quelle che rileva.
-- **Mappa ampliata**: le orbite sono circonferenze di esagoni contigui (senza zig-zag), circa il 10% più lunghe del valore delle note; all'inizio i pianeti sono piazzati a caso dove resteranno in plancia per almeno 160 turni. L'anello esterno del Sole spinge verso l'esagono dell'anello interno più allineato al Sole. Le navi nei campi di gravità di un pianeta (o a terra) si spostano con lui, quindi le orbite restano stabili. Per ora la mappa ampliata è disponibile nel Grand Tour.
+- **Mappa ampliata**: le orbite sono circonferenze di esagoni contigui (senza zig-zag), circa il 10% più lunghe del valore delle note; all'inizio i pianeti sono piazzati a caso dove resteranno in plancia per almeno 160 turni. L'anello esterno del Sole spinge verso l'esagono dell'anello interno più allineato al Sole. Le navi nei campi di gravità di un pianeta (o a terra) si spostano con lui, quindi le orbite restano stabili. Clandestine (assente dalla mappa di Rowles) è sull'asteroide della fascia più vicino a 37 esagoni dal Sole, 25° sotto l'orizzontale, con i sei esagoni attorno come asteroidi speciali. "Oltre Giove" (Escape) e l'ingresso degli alieni di Nova sono il bordo esterno della mappa (sulla completa, oltre Plutone). Sulla mappa completa i serbatoi di tutte le navi sono raddoppiati, come suggeriscono le note; le lune minori (Teti, Rea, Dione, Giapeto, Titania, Oberon, Caronte) sono corpi senza gravità.
 - **Prospecting**: si parte dalla Luna (a terra) o da Ceres (fermi); il carburante nelle basi costa 1 MCr a punto; l'estrazione a mano dà 0,1 t al giorno a una nave ferma sul filone. Vince chi ha più MegaCrediti allo scadere (60, 120 o 180 giorni).
 
 ## Da fare
 
-- Mappa ampliata: la versione completa fino a Plutone (152 × 53) e gli altri scenari sulla mappa ampliata.
+- Mappe ampliate: bilanciamento degli scenari (in Nova gli alieni raggiungono il Sole più facilmente) e IA più rapida sulla mappa completa.
 - IA: il Prospecting automatico dipende molto dalla fortuna nella prospezione e non ottimizza il commercio (vende solo a Ceres).
 - IA: una nave disabilitata ad alta velocità può ancora finire fuori plancia (non può manovrare).

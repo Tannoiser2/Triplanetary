@@ -9,8 +9,12 @@ const SAFE_TURNS := 160      # all'inizio ogni pianeta deve restare sulla planci
 
 static var _paths := {}
 
-static func raw() -> Dictionary:
-	return SolarMap.xraw()
+## Dati della mappa della partita (le orbite della mappa completa contengono anche quelle interne).
+static func raw(state: Dictionary = {}) -> Dictionary:
+	return SolarMap.xraw(variant(state))
+
+static func variant(state: Dictionary) -> String:
+	return str(state.get("xvariant", "xmap"))
 
 ## Orbita come sequenza di esagoni contigui, in senso antiorario sulla plancia (vista ruotata).
 static func path(id: String) -> Array:
@@ -36,15 +40,15 @@ static func path(id: String) -> Array:
 	return out
 
 static func orbit_def(id: String) -> Dictionary:
-	for o in raw().orbits:
+	for o in SolarMap.xraw("xmap_full").orbits:
 		if o.id == id: return o
 	return {}
 
 ## Posizioni iniziali: a caso, ma tali che pianeta e anello di gravità restino in plancia a lungo.
 static func setup(state: Dictionary) -> void:
-	var cells: Dictionary = SolarMap.get_xmap({}).cells
+	var cells: Dictionary = SolarMap.get_xmap({}, variant(state)).cells
 	var pos := {}
-	for o in raw().orbits:
+	for o in raw(state).orbits:
 		var p := path(o.id)
 		if o.has("behind"): continue
 		var tries := 0
@@ -52,11 +56,10 @@ static func setup(state: Dictionary) -> void:
 		while tries < 400:
 			tries += 1
 			var idx := 0
-			if int(o.period) == 0: idx = 0  # Giove: fermo nel punto della sua orbita visibile sulla plancia
-			else: idx = (Rules.roll(state) * 997 + Rules.roll(state) * 131 + tries * 37) % p.size()
+			idx = (Rules.roll(state) * 997 + Rules.roll(state) * 131 + tries * 37) % p.size()
 			if _stays(o, idx, cells): best = idx; break
 		pos[o.id] = best
-	for o in raw().orbits:
+	for o in raw(state).orbits:
 		if o.has("behind"):
 			var lead: int = pos.get(o.behind, 0)
 			pos[o.id] = (lead - int(path(o.id).size() * float(o.lag_deg) / 360.0) + path(o.id).size()) % path(o.id).size()
@@ -82,14 +85,14 @@ static func advance(state: Dictionary) -> void:
 	state.planet_clock = int(state.get("planet_clock", 0)) + 1
 	var before := Rules.map_of(state)
 	var moved := {}
-	for o in raw().orbits:
+	for o in raw(state).orbits:
 		if int(o.period) <= 0 or int(state.planet_clock) % int(o.period) != 0: continue
 		var p := path(o.id)
 		state.planets[o.id] = (int(state.planets[o.id]) + 1) % p.size()
 		moved[o.id] = true
 	if moved.is_empty(): return
 	var after := Rules.map_of(state)
-	for o in raw().orbits:
+	for o in raw(state).orbits:
 		if not moved.has(o.id): continue
 		var old_h: Vector2i = SolarMap.body(before, o.id).hex
 		var d: Vector2i = SolarMap.body(after, o.id).hex - old_h
@@ -115,7 +118,7 @@ static func future(state: Dictionary, t: int) -> Dictionary:
 	if t <= 0: return state.planets
 	var clock := int(state.get("planet_clock", 0))
 	var out := {}
-	for o in raw().orbits:
+	for o in raw(state).orbits:
 		var idx := int(state.planets.get(o.id, 0))
 		if int(o.period) > 0:
 			var per := int(o.period)
@@ -126,7 +129,7 @@ static func future(state: Dictionary, t: int) -> Dictionary:
 ## Esagono di un corpo fra t turni (lune comprese); per i corpi fissi la posizione attuale.
 static func body_hex_at(state: Dictionary, id: String, t: int) -> Vector2i:
 	var pl := future(state, t)
-	for o in raw().orbits:
+	for o in raw(state).orbits:
 		var p := path(o.id)
 		var h: Vector2i = p[int(pl.get(o.id, 0)) % p.size()]
 		if o.id == id: return h
@@ -135,8 +138,8 @@ static func body_hex_at(state: Dictionary, id: String, t: int) -> Vector2i:
 	return SolarMap.body(Rules.map_of(state), id).hex
 
 ## Esagoni dell'orbita per il disegno (una sola volta per corpo).
-static func orbit_paths() -> Dictionary:
+static func orbit_paths(state: Dictionary) -> Dictionary:
 	var out := {}
-	for o in raw().orbits:
+	for o in raw(state).orbits:
 		if int(o.period) > 0 and not o.has("behind"): out[o.id] = path(o.id)
 	return out

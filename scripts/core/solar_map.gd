@@ -39,28 +39,28 @@ static func get_map(sol_classic := false) -> Dictionary:
 	var data := {
 		"cells": cells, "bodies": bodies, "body_at": body_at, "gravity": gravity,
 		"asteroids": asteroids, "special_asteroids": special, "rows": int(raw.rows),
-		"sol_classic": sol_classic
+		"sol_classic": sol_classic, "edge_y": 0
 	}
 	_cache[key] = data
 	return data
 
 # ---------------------------------------------------------------- mappa ampliata (pianeti in moto)
 
-const XMAP_PATH := "res://data/xmap.json"
+## Varianti: "xmap" (sistema interno, 76 x 53) e "xmap_full" (fino a Plutone, 152 x 53).
 static var _xraw: Dictionary = {}
 static var _xcache: Dictionary = {}
 
-static func xraw() -> Dictionary:
-	if _xraw.is_empty():
-		_xraw = JSON.parse_string(FileAccess.get_file_as_string(XMAP_PATH))
-	return _xraw
+static func xraw(variant := "xmap") -> Dictionary:
+	if not _xraw.has(variant):
+		_xraw[variant] = JSON.parse_string(FileAccess.get_file_as_string("res://data/%s.json" % variant))
+	return _xraw[variant]
 
 ## Mappa ampliata con i corpi nelle posizioni date ({id: indice lungo l'orbita}).
-static func get_xmap(planets: Dictionary) -> Dictionary:
-	var key := JSON.stringify(planets)
+static func get_xmap(planets: Dictionary, variant := "xmap") -> Dictionary:
+	var key := variant + JSON.stringify(planets)
 	if _xcache.has(key): return _xcache[key]
 	if _xcache.size() > 40: _xcache.clear()
-	var raw := xraw()
+	var raw := xraw(variant)
 	var cells := {}
 	for c in raw.cells: cells[Vector2i(int(c[0]), int(c[1]))] = true
 	var bodies: Array = []
@@ -88,12 +88,18 @@ static func get_xmap(planets: Dictionary) -> Dictionary:
 			_add_body(bodies, gravity, m, h0 + Vector2i(int(m.offset[0]), int(m.offset[1])))
 	var body_at := {}
 	for b in bodies: body_at[b.hex] = b
+	for c in raw.get("fixed", []):
+		bodies.append({"id": c.id, "name": c.name, "hex": Vector2i(int(c.hex[0]), int(c.hex[1])), "gravity": "none", "radius": 0.0,
+			"color": Color(c.color), "base_sides": [], "asteroid_base": true})
 	var asteroids: Array = []
 	for a in raw.asteroids:
 		var ah := Vector2i(int(a[0]), int(a[1]))
 		if not body_at.has(ah): asteroids.append(ah)
+	var special: Array = raw.get("special", []).map(func(a): return Vector2i(int(a[0]), int(a[1])))
+	var miny := 0
+	for c in cells: miny = mini(miny, c.y)
 	var data := {"cells": cells, "bodies": bodies, "body_at": body_at, "gravity": gravity,
-		"asteroids": asteroids, "special_asteroids": [], "rows": 0, "sol_classic": false, "xmap": true}
+		"asteroids": asteroids, "special_asteroids": special, "rows": 0, "sol_classic": false, "xmap": true, "variant": variant, "edge_y": miny}
 	_xcache[key] = data
 	return data
 

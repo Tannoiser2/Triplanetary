@@ -29,7 +29,7 @@ const ORDNANCE_LIFE := 5
 # ---------------------------------------------------------------- utilità di base
 
 static func map_of(state: Dictionary) -> Dictionary:
-	if state.has("planets"): return SolarMap.get_xmap(state.planets)
+	if state.has("planets"): return SolarMap.get_xmap(state.planets, Planets.variant(state))
 	return SolarMap.get_map(state.options.get("sol_classic", false))
 
 static func player_ids(state: Dictionary) -> Array:

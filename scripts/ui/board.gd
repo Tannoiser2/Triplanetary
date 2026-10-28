@@ -241,7 +241,7 @@ func _draw_detection() -> void:
 
 ## Mappa ampliata: le orbite dei corpi in moto, con la posizione dei prossimi turni.
 func _draw_orbits() -> void:
-	var paths := Planets.orbit_paths()
+	var paths := Planets.orbit_paths(state)
 	for id in paths:
 		var b := SolarMap.body(_map, id)
 		if b.is_empty(): continue
@@ -316,11 +316,17 @@ func _draw_bodies() -> void:
 				draw_texture_rect(Art.glow(), Rect2(c - Vector2(r, r) * 3.2, Vector2(r, r) * 6.4), false, Color(halo, 0.42))
 				draw_circle(c, r * 1.08, Color(0, 0, 0, 0.55))
 			draw_texture_rect(Art.planet(b.id, b.color), Rect2(c - Vector2(r, r), Vector2(r, r) * 2.0), false)
-			if b.id == "jupiter":
-				pass
+			if b.id == "saturn":
+				# anelli: ellisse inclinata
+				var pts := PackedVector2Array()
+				for k in range(49):
+					var a := TAU * k / 48.0
+					pts.append(c + Vector2(cos(a) * r * 2.2, sin(a) * r * 0.62).rotated(-0.35))
+				draw_polyline(pts, Color("e8d6a8", 0.85), r * 0.18, true)
+				draw_polyline(pts, Color("8a7650", 0.6), r * 0.05, true)
 		else:
 			# Ceres e Clandestine: asteroidi-base
-			var col := Color("d9cbb4") if b.id == "ceres" else Color("b8ccef")
+			var col: Color = Color("d9cbb4") if b.id != "clandestine" else Color("b8ccef")
 			draw_circle(c, 0.2, col.darkened(0.4))
 			draw_circle(c + Vector2(-0.05, -0.05), 0.13, col)
 		for d in state.devastated:

@@ -83,6 +83,7 @@ static func choose(state: Dictionary, value: Variant) -> String:
 	s.free_takeoff = true
 	s.access_special = true
 	s.mission = true
+	Scenarios.adapt_ship(state, s)
 	state.ships.append(s)
 	state.phase = "astrogation"
 	state.setup = {}
