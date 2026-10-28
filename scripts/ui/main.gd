@@ -949,29 +949,64 @@ func _refresh_side() -> void:
 func _build_objectives(view: String) -> void:
 	match state.scenario:
 		"grand-tour":
-			objective_box.add_child(UITheme.caption("Grand Tour · tappe"))
-			var mine: Array = state.ships.filter(func(s): return s.owner == view)
-			if mine.is_empty(): return
-			var s: Dictionary = mine[0]
-			var grid := GridContainer.new()
-			grid.columns = 4
-			grid.add_theme_constant_override("h_separation", 4)
-			grid.add_theme_constant_override("v_separation", 4)
+			objective_box.add_child(UITheme.caption("Grand Tour · tappe di tutte le corvette"))
 			var map := Rules.map_of(state)
-			for item in Scenarios.grand_tour_progress(state, s):
-				var b := SolarMap.body(map, item.id)
-				var nxt: bool = item.get("next", false)
-				var chip := _panel(Color(b.color, 0.28) if item.done else Color("0a1530"), Color(b.color) if item.done else (UITheme.ACCENT if nxt else UITheme.LINE), 4, 5)
-				var prefix: String = "✓ " if item.done else (("%d. " % item.n) if item.has("n") else "")
-				var l := UITheme.label(prefix + b.name, 14, UITheme.TEXT if item.done else (UITheme.ACCENT if nxt else UITheme.TEXT_FAINT), UITheme.body_bold)
-				l.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-				chip.add_child(l)
-				chip.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-				grid.add_child(chip)
-			objective_box.add_child(grid)
-			var left := Scenarios.gt_missing(state, s)
-			var msg := "Rientra e atterra sulla Terra!" if left.is_empty() else ("Rotta obbligata: prossima tappa %s" % SolarMap.body(map, left[0]).name if state.sd.has("route") else "%d di %d corpi visitati" % [state.sd.required.size() - left.size(), state.sd.required.size()])
-			objective_box.add_child(UITheme.label(msg, 14, UITheme.PHOSPHOR if left.is_empty() else UITheme.TEXT_DIM))
+			var ships: Array = state.ships.filter(func(x): return not x.get("dummy", false))
+			var total: int = state.sd.required.size()
+			# classifica: chi ha toccato più corpi (e, a parità, chi ha consumato meno) in alto
+			ships.sort_custom(func(a, b):
+				var da: int = total - Scenarios.gt_missing(state, a).size()
+				var db: int = total - Scenarios.gt_missing(state, b).size()
+				if da != db: return da > db
+				return int(a.fuel_spent) < int(b.fuel_spent))
+			for s in ships:
+				var col := UITheme.player_color(state, s.owner)
+				var mine: bool = s.owner == view
+				var card := _panel(Color("0c1a3a") if mine else Color("08132b"), col if mine else UITheme.LINE, 5, 6)
+				var box := VBoxContainer.new()
+				box.add_theme_constant_override("separation", 3)
+				card.add_child(box)
+				var head := HBoxContainer.new()
+				head.add_theme_constant_override("separation", 6)
+				box.add_child(head)
+				var dot := Panel.new(); dot.custom_minimum_size = Vector2(10, 10)
+				dot.add_theme_stylebox_override("panel", UITheme.box(col, Color.TRANSPARENT, 5, 0, 0))
+				dot.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+				head.add_child(dot)
+				var nm := UITheme.label(Rules.player(state, s.owner).name, 15, col if Rules.alive(s) else UITheme.TEXT_FAINT, UITheme.body_bold)
+				nm.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+				nm.clip_text = true
+				head.add_child(nm)
+				var left_s := Scenarios.gt_missing(state, s)
+				var status := "%d/%d" % [total - left_s.size(), total]
+				if state.sd.finishers.has(s.id): status = "ARRIVATA · " + status
+				elif not Rules.alive(s): status = "PERDUTA"
+				elif left_s.is_empty(): status = "RIENTRO · " + status
+				status += " · %d carb." % int(s.fuel_spent)
+				head.add_child(UITheme.label(status, 13, UITheme.PHOSPHOR if left_s.is_empty() else UITheme.TEXT_DIM, UITheme.body_bold))
+				var flow := HFlowContainer.new()
+				flow.add_theme_constant_override("h_separation", 3)
+				flow.add_theme_constant_override("v_separation", 3)
+				box.add_child(flow)
+				for item in Scenarios.grand_tour_progress(state, s):
+					var b := SolarMap.body(map, item.id)
+					var nxt: bool = item.get("next", false)
+					var chip := _panel(Color(b.color, 0.55) if item.done else Color("0a1530"), Color(b.color) if item.done else (UITheme.ACCENT if nxt else UITheme.LINE), 3, 1)
+					chip.tooltip_text = ("%d. " % item.n if item.has("n") else "") + b.name + (" · visitato" if item.done else "")
+					var abbr: String = b.name.substr(0, 3).to_upper()
+					var l := UITheme.label(abbr if total <= 8 else abbr.substr(0, 2), 11, Color.WHITE if item.done else (UITheme.ACCENT if nxt else UITheme.TEXT_FAINT), UITheme.body_bold)
+					l.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+					l.custom_minimum_size = Vector2(32 if total <= 8 else 22, 0)
+					chip.add_child(l)
+					flow.add_child(chip)
+				objective_box.add_child(card)
+			var me_ship: Dictionary = {}
+			for x in state.ships:
+				if x.owner == view and not x.get("dummy", false): me_ship = x
+			if not me_ship.is_empty():
+				var left := Scenarios.gt_missing(state, me_ship)
+				var msg := "Rientra e atterra sulla Terra!" if left.is_empty() else ("Rotta obbligata: prossima tappa %s" % SolarMap.body(map, left[0]).name if state.sd.has("route") else "Ti mancano: %s" % ", ".join(left.map(func(id): return SolarMap.body(map, id).name)))
+				objective_box.add_child(_rich("[color=#%s]%s[/color]" % [(UITheme.PHOSPHOR if left.is_empty() else UITheme.TEXT_DIM).to_html(false), msg], 14))
 		"escape":
 			objective_box.add_child(UITheme.caption("Escape"))
 			var txt := ""
