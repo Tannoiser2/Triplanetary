@@ -416,8 +416,16 @@ func height(p: Vector2) -> float:
 		h += float(w[1]) / (1.0 + d.length_squared() / (float(w[2]) * float(w[2])))
 	return -h
 
+## Punto per navi e tracciati: segue il reticolo, ma vicino a un corpo risale al livello della mappa,
+## dove stanno i pianeti (che non sprofondano nel loro pozzo).
 func p3(p: Vector2, lift := 0.0) -> Vector3:
-	return Vector3(p.x, height(p) + lift, p.y)
+	var h := height(p)
+	for id in _bodies:
+		var e: Dictionary = _bodies[id]
+		if float(e.depth) <= 0.0: continue
+		var d: float = p.distance_to(e.pos)
+		h *= smoothstep(float(e.r3) + 0.15, float(e.r3) + 0.95, d)
+	return Vector3(p.x, h + lift, p.y)
 
 # ---------------------------------------------------------------- aggiornamento
 
@@ -460,14 +468,16 @@ func _process(delta: float) -> void:
 		var e2: Dictionary = _bodies[id]
 		var p: Vector2 = e2.pos
 		e2.node.position = Vector3(p.x, 0, p.y)
-		e2.holder.position = Vector3(0, height(p) + float(e2.r3) * 0.15, 0)
-		e2.holder.rotate_y(delta * (0.05 if id == "sol" else 0.12))
+		e2.holder.position = Vector3.ZERO
+		# rotazione su se stessi: il Sole lento, i pianeti giganti più veloci
+		var spin := 0.12 if id == "sol" else (0.6 if id in ["jupiter", "saturn", "uranus", "neptune"] else 0.4)
+		e2.holder.rotate_y(delta * spin)
 		var lab: Label3D = e2.node.get_node("Label")
-		lab.position = Vector3(0, height(p) + float(e2.r3) + 0.5, 0)
+		lab.position = Vector3(0, float(e2.r3) + 0.5, 0)
 		lab.visible = dist < 140.0
 	if _bodies.has("sol"):
 		var sp: Vector2 = _bodies.sol.pos
-		sun_light.position = Vector3(sp.x, height(sp) + 1.5, sp.y)
+		sun_light.position = Vector3(sp.x, 1.5, sp.y)
 	_update_ships(delta)
 	_update_camera()
 	_draw_overlay()
