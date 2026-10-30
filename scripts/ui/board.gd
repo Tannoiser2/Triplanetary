@@ -6,6 +6,17 @@ extends Control
 
 signal hex_clicked(hex: Vector2i, button: int)
 signal hex_hovered(hex: Vector2i)
+## Richieste di inquadratura, inoltrate anche al tavolo 3D.
+signal focus_requested(hex: Vector2i, min_zoom: float)
+signal fit_requested
+signal zoom_requested(factor: float)
+
+## Con il tavolo 3D attivo la plancia 2D non disegna e non riceve input (resta la fonte dei dati).
+var hide_for_3d := false:
+	set(v):
+		hide_for_3d = v
+		mouse_filter = Control.MOUSE_FILTER_IGNORE if v else Control.MOUSE_FILTER_STOP
+		queue_redraw()
 
 var state: Dictionary = {}
 var viewer := ""              # giocatore dal cui punto di vista si mostra l'informazione nascosta
@@ -109,6 +120,7 @@ func _safe() -> Rect2:
 	return safe_rect if safe_rect.size.x > 50 else Rect2(Vector2.ZERO, size)
 
 func fit() -> void:
+	fit_requested.emit()
 	if _map_rect.size == Vector2.ZERO or size.x < 10: return
 	var r := _safe()
 	zoom = minf(r.size.x / _map_rect.size.x, r.size.y / _map_rect.size.y)
@@ -117,11 +129,15 @@ func fit() -> void:
 	queue_redraw()
 
 func center_on(h: Vector2i, min_zoom := 0.0) -> void:
+	focus_requested.emit(h, min_zoom)
 	if min_zoom > 0.0: zoom = maxf(zoom, min_zoom)
 	offset = _safe().get_center() - world(h) * zoom
 	queue_redraw()
 
 func zoom_by(factor: float, at: Vector2) -> void:
+	if hide_for_3d:
+		zoom_requested.emit(factor)
+		return
 	var before := to_world(at)
 	var min_z := minf(size.x / _map_rect.size.x, size.y / _map_rect.size.y) * 0.8 if _map_rect.size.x > 0 else 5.0
 	zoom = clampf(zoom * factor, min_z, 120.0)
@@ -181,7 +197,7 @@ func add_fx(kind: String, hex: Vector2i, delay := 0.0) -> void:
 # ---------------------------------------------------------------- disegno
 
 func _draw() -> void:
-	if state.is_empty() or _map.is_empty(): return
+	if state.is_empty() or _map.is_empty() or hide_for_3d: return
 	# con i pianeti in moto la mappa cambia a fine turno: si aggiorna senza ricostruire il reticolo
 	var m := Rules.map_of(state)
 	if not replay.is_empty() and state.has("planets0"):

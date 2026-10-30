@@ -43,6 +43,8 @@ var thinking: Label
 var detect_toggle: Button
 var trails_toggle: Button
 var drift_toggle: Button
+var view3d_toggle: Button
+var board3d: Board3D
 const SETTINGS_PATH := "user://impostazioni.cfg"
 
 ## Interruttore di visualizzazione ricordato fra una sessione e l'altra.
@@ -64,6 +66,7 @@ func _view_toggle(text: String, tip_s: String, key: String, default_on: bool) ->
 			"trails": board.show_trails = v
 			"drift": board.show_drift = v
 			"radar": board.show_detection = v
+			"3d": _set_3d(v)
 		var c2 := ConfigFile.new()
 		c2.load(SETTINGS_PATH)
 		c2.set_value("vista", key, v)
@@ -74,7 +77,14 @@ func _view_toggle(text: String, tip_s: String, key: String, default_on: bool) ->
 		"trails": board.show_trails = on
 		"drift": board.show_drift = on
 		"radar": board.show_detection = on
+		"3d": _set_3d.call_deferred(on)
 	return b
+
+## Tavolo 3D: la plancia 2D resta la fonte dei dati ma non viene disegnata.
+func _set_3d(on: bool) -> void:
+	if board3d == null: return
+	board3d.enabled = on
+	board.hide_for_3d = on
 
 # schermate
 var menu: Control
@@ -111,6 +121,11 @@ func _ready() -> void:
 	board.hex_clicked.connect(_on_hex_clicked)
 	board.hex_hovered.connect(_on_hex_hovered)
 	add_child(board)
+	board3d = Board3D.new(board)
+	board3d.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	board3d.hex_clicked.connect(_on_hex_clicked)
+	board3d.hex_hovered.connect(_on_hex_hovered)
+	add_child(board3d)
 	net = Net.new()
 	add_child(net)
 	_build_hud()
@@ -235,6 +250,8 @@ func _build_hud() -> void:
 	brow.add_child(drift_toggle)
 	detect_toggle = _view_toggle("RADAR", "Raggio dei rilevatori delle basi, 5 esagoni (tasto V)", "radar", false)
 	brow.add_child(detect_toggle)
+	view3d_toggle = _view_toggle("3D", "Tavolo in 3D: trascina per spostare, tasto destro o Maiusc per ruotare e inclinare, rotella per lo zoom; su iPad due dita per zoom, rotazione e inclinazione (tasto T)", "3d", false)
+	brow.add_child(view3d_toggle)
 	hint = RichTextLabel.new()
 	hint.bbcode_enabled = true
 	hint.fit_content = true
@@ -431,6 +448,13 @@ func _flow() -> void:
 			if gen != _gen: return
 			continue
 		# giocatore umano
+		if Rules.player_stranded(state, who) and not state.get("stranded_asked", []).has(who):
+			if not state.has("stranded_asked"): state.stranded_asked = []
+			state.stranded_asked.append(who)
+			busy = false
+			_refresh()
+			_show_stranded(who)
+			return
 		if _needs_privacy() and shown_for != who:
 			await _show_privacy(who)
 			if gen != _gen: return
@@ -481,9 +505,7 @@ func _auto_select(who: String) -> void:
 				var c := Vector2.ZERO
 				for h in sp: c += Board.world(h)
 				c /= sp.size()
-				board.zoom = maxf(board.zoom, 15.0)
-				board.offset = board._safe().get_center() - c * board.zoom
-				board.queue_redraw()
+				board.center_on(Board.world_to_hex(c), 15.0)
 			else: board.fit()
 		return
 	var cur := Rules.ship(state, sel)
@@ -1882,10 +1904,13 @@ In Nova, Retribution, The Fleet Mutiny, Interplanetary War e Prospecting la part
 In ogni scenario si può scegliere la mappa ampliata di Mike Rowles (interna fino a Giove o completa fino a Plutone): i pianeti girano attorno al Sole in senso antiorario (il cerchio colorato è l'orbita, la freccia indica il prossimo esagono). Le navi a terra o nei campi di gravità di un pianeta si spostano con lui. L'anello interno del Sole ha gravità tripla, quello di Giove doppia: avvicinarsi al Sole richiede molta prudenza.
 
 [b][color=#ff9a5c]Fine della partita[/color][/b]
-Se per 20 giorni non succede nulla (nessuna spinta, nessun combattimento, nessun progresso, navi ferme o in orbita) la partita si chiude da sola e viene aggiudicata; dopo 15 giorni il registro avvisa. Il pulsante FINE in alto la chiude subito: vince chi ha raggiunto più tappe, soppresso più lati, abbattuto più alieni o, negli altri scenari, chi ha più forza ancora in gioco. Poi si passa alla schermata finale con il REPLAY.
+Se per 20 giorni non succede nulla (nessuna spinta, nessun combattimento, nessun progresso, navi ferme o in orbita) la partita si chiude da sola e viene aggiudicata; dopo 15 giorni il registro avvisa. Il pulsante FINE in alto la chiude subito: vince chi ha raggiunto più tappe, soppresso più lati, abbattuto più alieni o, negli altri scenari, chi ha più forza ancora in gioco. Poi si passa alla schermata finale con il REPLAY. Se tutte le navi di un giocatore umano restano a secco e non possono più raggiungere una base amica (né essere soccorse da una nave amica con carburante), il gioco chiede se terminare la partita o lasciarla proseguire giocata soltanto dall'IA.
 
 [b][color=#ff9a5c]Visualizzazione e replay[/color][/b]
 Con ROTTE e DERIVA spenti la plancia si fa pulita: ogni nave mostra la fiamma della spinta scelta per il turno. Con PRUA SULLA ROTTA (nella barra del replay, attivo di norma) la nave punta sempre lungo la sua rotta e la fiamma esce da uno dei sei lati, quello opposto alla spinta; spento, la nave ruota verso la spinta e accende il motore principale. A fine partita il pulsante REPLAY (anche dal MENU) fa rivedere tutta la partita: le navi si muovono insieme su traiettorie continue, senza pause fra i turni, con velocità da ½× a 4× e una barra per saltare a qualunque giorno.
+
+[b][color=#ff9a5c]Tavolo 3D[/color][/b]
+Il pulsante 3D (tasto T) mostra la plancia come un tavolo tridimensionale: pianeti e navi in 3D, con il reticolo che sprofonda nei pozzi di gravità (più è profondo, più il corpo attira). Rotte, derive, scelte di spinta e replay funzionano come in 2D. Mouse: trascina per spostare, tasto destro (o Maiusc + trascina) per ruotare e inclinare, rotella per lo zoom. iPad: un dito sposta e seleziona, due dita avvicinate o allontanate fanno lo zoom, ruotate girano il tavolo, trascinate in verticale lo inclinano.
 
 [b][color=#ff9a5c]Gioco online[/color][/b]
 Dal menu: CREA UNA STANZA e comunica il codice di 4 lettere; gli amici scrivono il codice e premono ENTRA. Se cade la linea si rientra dallo stesso menu.
@@ -2156,6 +2181,39 @@ func _start_from_menu() -> void:
 		return
 	var st := Scenarios.create(menu_scenario, seats, _scenario_options(menu_options))
 	_start_game(st)
+
+## Tutte le navi di un giocatore umano sono a secco e non possono più rifornirsi:
+## la partita si chiude (con aggiudicazione) oppure prosegue giocata soltanto dall'IA.
+func _show_stranded(who: String) -> void:
+	if dialog != null: dialog.queue_free()
+	dialog = _modal(560)
+	var card: VBoxContainer = dialog.get_meta("card")
+	card.add_child(UITheme.label("SENZA CARBURANTE", 26, UITheme.DANGER, UITheme.display))
+	card.add_child(_rich("Le navi di [b]%s[/b] hanno finito il carburante e non possono più raggiungere una base amica per rifornirsi. Puoi chiudere la partita adesso (la vittoria viene aggiudicata e poi c'è il replay) oppure lasciarla proseguire giocata soltanto dall'IA." % Rules.player(state, who).name, 16))
+	var row := HBoxContainer.new()
+	row.add_theme_constant_override("separation", 10)
+	card.add_child(row)
+	var yes := UITheme.primary_button("TERMINA LA PARTITA")
+	yes.custom_minimum_size = Vector2(240, 46)
+	yes.pressed.connect(func():
+		dialog.queue_free(); dialog = null
+		var n: int = state.log.size()
+		Scenarios.adjudicate(state, "%s è rimasto senza carburante." % Rules.player(state, who).name)
+		_after_step(n)
+		_refresh()
+		if online != null: _flow()
+		else: _show_victory())
+	row.add_child(yes)
+	var ai := Button.new(); ai.text = "CONTINUA CON L'IA"; ai.custom_minimum_size = Vector2(240, 46)
+	ai.pressed.connect(func():
+		dialog.queue_free(); dialog = null
+		if online != null: autoplay = true
+		else: Rules.player(state, who).type = "ai"
+		Rules.log_event(state, "%s è a secco: da qui in avanti gioca l'IA." % Rules.player(state, who).name, "info")
+		_append_log(state.log[-1])
+		_flow())
+	row.add_child(ai)
+	add_child(dialog)
 
 ## Fine anticipata: chiede conferma, aggiudica la vittoria e passa alla schermata finale (con il replay).
 func _confirm_end() -> void:
@@ -2578,6 +2636,7 @@ func _unhandled_input(event: InputEvent) -> void:
 			KEY_R: trails_toggle.button_pressed = not trails_toggle.button_pressed; return
 			KEY_D: drift_toggle.button_pressed = not drift_toggle.button_pressed; return
 			KEY_V: detect_toggle.button_pressed = not detect_toggle.button_pressed; return
+			KEY_T: view3d_toggle.button_pressed = not view3d_toggle.button_pressed; return
 	if busy: return
 	if event is InputEventKey and event.pressed and not event.echo:
 		match event.keycode:

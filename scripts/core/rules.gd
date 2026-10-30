@@ -972,3 +972,44 @@ static func _update_detection(state: Dictionary) -> void:
 		if not b.is_empty() and b.owner == t.owner:
 			for viewer in player_ids(state):
 				if viewer != t.owner: state.knowledge[viewer].erase(t.id)
+
+# ---------------------------------------------------------------- navi senza carburante
+
+## Vero se la nave è a secco e non potrà più fare rifornimento: non è in una base amica e, lasciata
+## alla deriva, non entra mai in orbita sopra una base amica che fornisce carburante.
+static func stranded(state: Dictionary, s: Dictionary) -> bool:
+	if not alive(s) or s.get("dummy", false) or s.get("is_base", false): return false
+	if s.infinite_fuel or int(s.fuel) > 0 or int(s.max_fuel) <= 0: return false
+	var b := docked_base(state, s)
+	if friendly_base(state, b, s.owner) and b.get("fuel", true): return false
+	if s.landed != "": return not s.get("free_takeoff", false)
+	var map := map_of(state)
+	var pos: Vector2i = s.pos
+	var vel: Vector2i = s.vel
+	var grav: Array = s.grav.duplicate()
+	for t in range(40):
+		var r := simulate(map, pos, vel, grav, Vector2i.ZERO, false, hazard_rocks(state, s), state.special, s.access_special)
+		if r.offmap: return false     # esce dalla mappa: la sua sorte si decide comunque
+		if r.crash != "": return true
+		var from := pos
+		pos = r.dest; vel = r.vel; grav = r.grav
+		for base in state.bases:
+			if not friendly_base(state, base, s.owner) or not base.get("fuel", true): continue
+			var body := SolarMap.body(map, base.body)
+			if body.is_empty(): continue
+			if int(base.side) < 0:
+				if pos == body.hex and vel == Vector2i.ZERO: return false
+			elif pos == body.hex + Hex.DIRS[int(base.side)] and Hex.length(vel) == 1 and Hex.distance(from, pos) == 1 \
+					and map.gravity.has(from) and map.gravity.has(pos):
+				return false
+	return true
+
+## Vero se tutte le navi ancora in gioco del giocatore sono a secco senza speranza di rifornimento
+## (nessuna nave amica con carburante può soccorrerle).
+static func player_stranded(state: Dictionary, pid: String) -> bool:
+	var any := false
+	for s in state.ships:
+		if s.owner != pid or not alive(s) or s.get("dummy", false) or s.get("is_base", false): continue
+		if not stranded(state, s): return false
+		any = true
+	return any

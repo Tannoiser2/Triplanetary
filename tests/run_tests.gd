@@ -35,6 +35,7 @@ func _init() -> void:
 	test_xmap_full()
 	test_replay()
 	test_stalemate()
+	test_stranded()
 	if failures == 0: print("OK: %d controlli" % count)
 	else: printerr("%d/%d controlli falliti" % [failures, count])
 	quit(1 if failures else 0)
@@ -395,3 +396,21 @@ func test_stalemate() -> void:
 			AI.play_step(s2); k += 1
 		Scenarios.adjudicate(s2, "Fine anticipata.")
 		check(s2.over and s2.result != "", "%s: fine anticipata aggiudicata (%s)" % [id, s2.winner])
+
+func test_stranded() -> void:
+	var st := empty_state()
+	st.bases = []
+	var m := Rules.map_of(st)
+	var s := add_ship(st, "o", "P1", "corvette", Vector2i.ZERO)
+	Scenarios._orbit(s, m, "terra", 0)
+	s.fuel = 0
+	check(Rules.stranded(st, s), "a secco in orbita senza basi: irrecuperabile")
+	st.bases.append({"body": "terra", "side": 3, "owner": "P1", "active": true, "fuel": true, "ordnance": true})
+	check(not Rules.stranded(st, s), "a secco ma l'orbita passa sopra una base amica")
+	st.bases[0].owner = "P2"
+	check(Rules.player_stranded(st, "P1"), "giocatore con tutte le navi a secco")
+	var t := add_ship(st, "t", "P1", "tanker", Vector2i(5, 5))
+	check(not Rules.player_stranded(st, "P1"), "una nave amica con carburante può soccorrere")
+	t.fuel = 0; t.vel = Vector2i(0, 0); t.grav = []
+	s.fuel = 3
+	check(not Rules.player_stranded(st, "P1"), "basta una nave con carburante")
